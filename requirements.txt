@@ -1,0 +1,10 @@
+# Runs on the Raspberry Pi 5.
+# picamera2 is NOT installed via pip — it comes from apt and needs system
+# libcamera bindings:
+#   sudo apt install -y python3-picamera2
+# If using a venv, create it with --system-site-packages so it can see
+# picamera2, e.g.: python3 -m venv --system-site-packages .venv
+
+flask
+opencv-python-headless
+numpy

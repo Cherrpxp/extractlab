@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# runtime / generated artefacts
+*.log
+*.avi
+*_annotated.png
+prof*.csv
+synthetic_*.avi
+
+# ad-hoc camera grab, not a curated test fixture
+sample_frame.jpg

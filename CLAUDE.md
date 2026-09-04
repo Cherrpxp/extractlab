@@ -1,4 +1,6 @@
-# CLAUDE.md — บริบทโปรเจกต์สำหรับ Claude Code
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ระบบแยกชั้นน้ำ–ไซโคลเฮกเซนอัตโนมัติ: ใช้กล้อง + classical computer vision ตรวจจับตำแหน่งรอยต่อ
 ระหว่างของเหลวสองเฟส (ทั้งคู่ใสไม่มีสี) แล้วสั่งปั๊มดูดชั้นล่างออกจนถึงจุดที่ต้องการ รันบน Raspberry Pi 5 บอร์ดเดียว
@@ -31,11 +33,12 @@ nohup ./run_stream.sh > run_stream.log 2>&1 &     # supervisor: รีสตา�
 EXPOSURE_US=25000 GAIN=8 WB_RED=2.14 WB_BLUE=1.76 \
 ROI_X=555 ROI_Y=370 ROI_W=175 ROI_H=290 python3 realtime_stream.py
 
-# ทดสอบอัลกอริทึมกับข้อมูลสังเคราะห์ (ไม่ต้องมีกล้อง)
-python3 demo.py            # ต้องขึ้น RESULT: PASS
-python3 turbidity_dct.py
+# ทดสอบ — ไม่มี pytest/lint/build · แต่ละสคริปต์รัน __main__ เป็น self-check เอง
+python3 demo.py            # integration smoke test — ต้องขึ้น RESULT: PASS (มี assert ในตัว)
+python3 turbidity_dct.py   # self-check ราย module ("run a single test" = รันไฟล์นั้น)
 python3 volume_model.py
 python3 synthetic_data.py
+#   boundary_detection.py ไม่มี __main__ — ทดสอบผ่าน demo.py
 
 # วิเคราะห์รูปจริง 1 ภาพ
 python3 analyze_real_photo.py photo.jpg --roi X Y W H --profile-csv prof.csv
@@ -62,6 +65,31 @@ python3 analyze_real_photo.py photo.jpg --roi X Y W H --profile-csv prof.csv
 | `run_stream.sh` | supervisor: relaunch `realtime_stream.py` ทุกครั้งที่มันปิด (คู่กับ watchdog) |
 | `track_log.py` | poll `/status` → CSV จากเครื่องอื่น |
 | `records/` | CSV ผลการทดสอบไขน้ำ (หนึ่งแถวต่อเฟรม) |
+
+---
+
+## สถาปัตยกรรม — การไหลของข้อมูลตอนรัน
+
+โค้ดแบ่งเป็น 2 โลกที่แยกกันชัดเจน:
+
+**1. โมดูลวิเคราะห์ที่ไม่ยุ่งกับฮาร์ดแวร์** — `boundary_detection`, `turbidity_dct`, `volume_model`
+เป็นฟังก์ชัน/คลาสบริสุทธิ์ที่รับ numpy array (ไม่มี camera I/O, ไม่ import `picamera2`/`flask`)
+`demo.py` เป็นตัวประกอบทั้งสามเข้าด้วยกัน รันกับเฟรมจาก `synthetic_data.py` — ทดสอบ algorithm ได้เต็มรูปแบบบนเครื่องใดก็ได้
+โซ่การตรวจจับใน `boundary_detection.py`: crop ROI → ค่าเฉลี่ยความสว่างรายแถว → smooth → `np.gradient` →
+`argmax(|grad|)` (เว้น margin ที่ขอบ) → แถวนั้น = รอยต่อ, `|grad|` ณ แถวนั้น = `conf`
+
+**2. ระบบสด `realtime_stream.py`** (ต้องมี Pi + กล้อง) — โครงเป็น **producer เดียว + Flask threaded หลายผู้บริโภค**:
+- เธรด `_capture_loop` เป็น producer เดียว: `capture_array()` → `detect_boundary(frame, ROI)` →
+  `_Tracker.update()` (median `TRACK_WIN` เฟรม + ปฏิเสธการกระโดด > `TRACK_MAX_STEP` px, re-seed หลังติดค้าง
+  `TRACK_RESEED_AFTER` เฟรม) → เขียน `_latest_jpeg` + dict `_status` + (ถ้ากำลังบันทึก) หนึ่งแถวใน CSV
+- Flask serve อย่างเดียว: `/video_feed` สตรีม `_latest_jpeg`, `/status` คืน `_status` + สถานะการบันทึก,
+  `/records` + `/record/start|stop` จัดการไฟล์ใน `records/`
+- เธรด `_watchdog`: ถ้าไม่มีเฟรมใหม่ 15 วิ → `os._exit(1)` แล้ว `run_stream.sh` (loop ข้างนอก) relaunch ให้ → กู้กล้องค้างได้เอง
+- **การตั้งค่าทั้งหมดเป็นค่าคงที่ระดับโมดูลใน `realtime_stream.py`** ส่วนใหญ่ override ด้วย env var ได้
+  (`ROI_X/Y/W/H`, `EXPOSURE_US`, `GAIN`, `WB_RED/BLUE`) · `CONFIDENCE_THRESHOLD` และพารามิเตอร์ `_Tracker`
+  (`TRACK_*`) เป็นค่าคงที่ — เป็น "ปุ่ม" ที่งานเฟส 1 (ทำให้ค่ากรองเสถียร) กำลังปรับอยู่
+
+`_status` dict คือสัญญาระหว่างสองส่วน: capture loop เขียนฝั่งเดียว, `/status` (และ `track_log.py`, หน้าเว็บ) อ่าน
 
 ---
 

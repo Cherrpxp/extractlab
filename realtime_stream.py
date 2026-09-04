@@ -120,9 +120,28 @@ def _hint_for(found: bool, confidence: float, roi_brightness: float) -> str:
     return "เจอสัญญาณแล้ว — เช็คว่าเส้นแดงตรงกับรอยต่อน้ำ/น้ำมันจริงไหม แล้วจดค่า conf"
 
 
+_frame_count = 0  # advanced every processed frame; watched for camera stalls
+
+
+def _watchdog():
+    """picamera2's capture_array() can block forever if the camera is knocked
+    or the CSI link glitches — the Flask server keeps answering with a stale
+    frame and no error. If no frame has been processed for ~15 s, exit hard so
+    a supervisor (run_stream.sh / systemd) can restart with a fresh camera."""
+    last_seen, last_change = _frame_count, time.monotonic()
+    while True:
+        time.sleep(5)
+        if _frame_count != last_seen:
+            last_seen, last_change = _frame_count, time.monotonic()
+        elif time.monotonic() - last_change > 15:
+            print("watchdog: no frames for 15s — camera stalled, exiting for restart",
+                  flush=True)
+            os._exit(1)
+
+
 def _capture_loop():
     """Single producer: grab frames, run detection, publish JPEG + status."""
-    global _latest_jpeg
+    global _latest_jpeg, _frame_count
     x, y, w, h = ROI
     prev = time.monotonic()
     fps = 0.0
@@ -154,6 +173,7 @@ def _capture_loop():
         ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
         if ok:
             _latest_jpeg = buf.tobytes()
+        _frame_count += 1
 
         with _status_lock:
             _status.update(
@@ -178,6 +198,7 @@ def _capture_loop():
 
 _latest_jpeg = b""
 threading.Thread(target=_capture_loop, daemon=True).start()
+threading.Thread(target=_watchdog, daemon=True).start()
 
 
 def gen_frames():

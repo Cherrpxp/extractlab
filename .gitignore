@@ -12,4 +12,5 @@ prof*.csv
 synthetic_*.avi
 
 # ad-hoc camera grab, not a curated test fixture
+_*.jpg
 sample_frame.jpg

@@ -15,6 +15,8 @@ from tracking import (
     Tracker,
 )
 
+FAR = TRACK_MAX_STEP + 100  # a jump well past the "off position" threshold
+
 
 def _settle(t: Tracker, y: int, conf: float = 10.0, n: int = TRACK_WIN + 3) -> float:
     for _ in range(n):
@@ -51,22 +53,22 @@ def test_s3_sub_threshold_conf_is_ignored():
     assert held == pytest.approx(500, abs=2)
 
 
-# S4 -- the drain-test bug -----------------------------------------------------
-def test_s4_marginal_conf_wrong_lock_does_not_reseed():
+# S4 -- the drain-test bug: no re-seed while draining -------------------------
+def test_s4_never_reseeds_while_draining():
     t = Tracker()
-    locked = _settle(t, 500, conf=10.0)          # reference conf ~10
-    for _ in range(TRACK_RESEED_AFTER + 10):     # stuck +130 px away...
-        t.update(630, conf=5.0)                  # ...but only marginal conf
-    assert abs(t.smooth - locked) <= TRACK_MAX_STEP  # must NOT have jumped to 630
+    locked = _settle(t, 500, conf=10.0)
+    for _ in range(TRACK_RESEED_AFTER + 30):     # a long, stable wrong lock, full conf
+        t.update(500 + FAR, conf=10.0, draining=True)
+    assert abs(t.smooth - locked) <= TRACK_MAX_STEP  # held; never jumped to the far value
 
 
-# S5 -- guard: don't over-correct the S4 fix ---------------------------------
-def test_s5_strong_conf_fast_move_is_followed():
+# S5 -- re-acquisition in the live view (not draining) ----------------------
+def test_s5_reacquires_a_sustained_far_run_when_not_draining():
     t = Tracker()
     _settle(t, 500, conf=10.0)
     for _ in range(TRACK_RESEED_AFTER + 5):
-        t.update(630, conf=10.0)                 # new position, full confidence
-    assert abs(t.smooth - 630) <= TRACK_MAX_STEP
+        t.update(500 + FAR, conf=10.0, draining=False)
+    assert abs(t.smooth - (500 + FAR)) <= TRACK_MAX_STEP
 
 
 # S6 -----------------------------------------------------------------------------

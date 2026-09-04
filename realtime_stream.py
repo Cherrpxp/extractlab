@@ -17,14 +17,13 @@ import os
 import re
 import threading
 import time
-from collections import deque
 
 import cv2
-import numpy as np
 from flask import Flask, Response, jsonify, send_from_directory
 from picamera2 import Picamera2
 
 from boundary_detection import detect_boundary
+from tracking import CONFIDENCE_THRESHOLD, Tracker
 
 # --- Camera framing --------------------------------------------------------
 # (x, y, w, h) in pixel coordinates of the full 1280x720 frame, cropped to
@@ -44,21 +43,10 @@ _ROI_IS_PLACEHOLDER = False
 # Row-profile smoothing window (pixels). Larger = smoother but coarser.
 SMOOTH_KERNEL = 5
 
-# Temporal filter for the per-frame boundary_y. The raw detection jumps ±50 px
-# (and occasionally ~200 px) when it briefly locks onto a competing edge. We
-# publish a smoothed value: reject any raw sample that leaps more than
-# TRACK_MAX_STEP px from the current smoothed position, and report the median
-# of the last TRACK_WIN accepted samples. If raw stays far away for
-# TRACK_RESEED_AFTER frames the interface really did move fast (or was
-# re-acquired) — re-seed on it.
-TRACK_WIN = 9
-TRACK_MAX_STEP = 30
-TRACK_RESEED_AFTER = 15
-
-# Below this |gradient| the frame is treated as "no boundary found" (e.g.
-# camera not settled yet, or the interface signal is too weak without dye).
-# Tune this from real footage — watch the conf value on the page.
-CONFIDENCE_THRESHOLD = 3.0
+# The per-frame boundary_y is smoothed by tracking.Tracker (median + jump
+# rejection + confidence-gated re-seed). CONFIDENCE_THRESHOLD and the TRACK_*
+# knobs live in tracking.py, which is hardware-free and unit-tested
+# (tests/test_tracking.py, clauses S1-S6).
 
 FRAME_SIZE = (1280, 720)
 JPEG_QUALITY = 80
@@ -115,29 +103,6 @@ _status = {
 }
 
 
-class _Tracker:
-    """Median filter with jump rejection for the boundary row. See the
-    TRACK_* constants above."""
-
-    def __init__(self):
-        self._hist: deque[int] = deque(maxlen=TRACK_WIN)
-        self._smooth: float | None = None
-        self._rejects = 0
-
-    def update(self, raw: int, found: bool) -> float | None:
-        if not found:
-            return self._smooth  # hold last during a dropout
-        if self._smooth is None or abs(raw - self._smooth) <= TRACK_MAX_STEP \
-                or self._rejects >= TRACK_RESEED_AFTER:
-            if self._smooth is not None and abs(raw - self._smooth) > TRACK_MAX_STEP:
-                self._hist.clear()  # re-seeding after a real fast move
-            self._hist.append(raw)
-            self._smooth = float(np.median(self._hist))
-            self._rejects = 0
-        else:
-            self._rejects += 1
-        return self._smooth
-
 # In-browser recording: the ⏺ button on the page starts/stops a CSV that gets
 # one row per processed frame. Used for the drain test — run it while pumping
 # the lower layer out, then read the summary the ⏹ button prints.
@@ -181,7 +146,7 @@ def _capture_loop():
     """Single producer: grab frames, run detection, publish JPEG + status."""
     global _latest_jpeg, _frame_count
     x, y, w, h = ROI
-    tracker = _Tracker()
+    tracker = Tracker()
     prev = time.monotonic()
     fps = 0.0
     while True:
@@ -193,7 +158,7 @@ def _capture_loop():
 
         boundary_y, confidence = detect_boundary(frame, roi=ROI, smooth_kernel=SMOOTH_KERNEL)
         found = bool(confidence >= CONFIDENCE_THRESHOLD)
-        y_smooth = tracker.update(int(boundary_y), found)
+        y_smooth = tracker.update(int(boundary_y), float(confidence), draining=_rec["on"])
         roi_gray = cv2.cvtColor(frame[y:y + h, x:x + w], cv2.COLOR_BGR2GRAY)
         roi_brightness = float(roi_gray.mean())
 

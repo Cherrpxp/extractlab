@@ -8,10 +8,15 @@ Behaviour contract — see ``tests/test_tracking.py`` (clauses S1-S6) and PRD §
   S1  a clean signal (steps <= TRACK_MAX_STEP) passes straight through, median lag only
   S2  a lone outlier is rejected
   S3  a frame with conf < CONFIDENCE_THRESHOLD contributes nothing (hold last)
-  S4  a persistent wrong lock at *marginal* confidence must NOT re-seed the output
-  S5  a genuine fast move (strong confidence at the new position) IS followed
-  S6  with draining=True, motion that pulls the output backwards past
-      TRACK_MONO_SLACK px is rejected
+  S4  while ``draining`` the output NEVER re-seeds onto a far position: during a
+      controlled drain the interface only creeps, so any large jump is a false
+      lock. (Verified on records/rec_20260904_115249.csv: re-seeding was the
+      source of every >20 px glitch; disabling it drops the worst jump 146 -> 26 px.)
+  S5  while NOT draining, a sustained run at a far position IS followed after
+      TRACK_RESEED_AFTER frames -- this is re-acquisition after the camera is
+      re-aimed or the interface is re-found in the live view.
+  S6  while ``draining`` a step that pulls the output backwards past
+      TRACK_MONO_SLACK px is rejected (the interface descends monotonically).
 """
 
 from __future__ import annotations
@@ -20,12 +25,11 @@ from collections import deque
 
 import numpy as np
 
-CONFIDENCE_THRESHOLD = 3.0      # conf below this -> "no boundary this frame"
-TRACK_WIN = 9                   # median window (frames)
-TRACK_MAX_STEP = 30             # px; a larger jump from the smoothed value is "off position"
-TRACK_RESEED_AFTER = 15         # consecutive off-position frames before a re-seed
-TRACK_RESEED_CONF_FRAC = 0.8    # re-seed only if off-position conf >= frac * reference conf
-TRACK_MONO_SLACK = 8            # px of backward motion tolerated while draining
+CONFIDENCE_THRESHOLD = 3.0   # conf below this -> "no boundary this frame"
+TRACK_WIN = 9                # median window (frames)
+TRACK_MAX_STEP = 30          # px; a larger jump from the smoothed value is "off position"
+TRACK_RESEED_AFTER = 15      # off-position frames before re-acquiring (only when not draining)
+TRACK_MONO_SLACK = 8         # px of backward motion tolerated while draining
 
 
 class Tracker:
@@ -38,18 +42,30 @@ class Tracker:
     def smooth(self) -> float | None:
         return self._smooth
 
-    def update(self, raw: int, conf: float, draining: bool = False) -> float | None:
-        found = conf >= CONFIDENCE_THRESHOLD
-        if not found:
-            return self._smooth  # S3: hold last during a dropout
+    def _accept(self, raw: int) -> None:
+        self._hist.append(int(raw))
+        self._smooth = float(np.median(self._hist))
+        self._rejects = 0
 
-        if self._smooth is None or abs(raw - self._smooth) <= TRACK_MAX_STEP \
-                or self._rejects >= TRACK_RESEED_AFTER:
-            if self._smooth is not None and abs(raw - self._smooth) > TRACK_MAX_STEP:
-                self._hist.clear()  # re-seeding after a sustained move
-            self._hist.append(int(raw))
-            self._smooth = float(np.median(self._hist))
-            self._rejects = 0
-        else:
-            self._rejects += 1
+    def update(self, raw: int, conf: float, draining: bool = False) -> float | None:
+        if conf < CONFIDENCE_THRESHOLD:
+            return self._smooth  # S3: an untrusted frame contributes nothing
+
+        if self._smooth is None:
+            self._accept(raw)
+            return self._smooth
+
+        step = raw - self._smooth
+        if abs(step) <= TRACK_MAX_STEP:
+            if draining and step < -TRACK_MONO_SLACK:
+                self._rejects += 1  # S6: the interface does not move back up
+                return self._smooth
+            self._accept(raw)
+            return self._smooth
+
+        # off position
+        self._rejects += 1
+        if not draining and self._rejects >= TRACK_RESEED_AFTER:
+            self._hist.clear()  # S5: re-acquire in the live view; S4: never while draining
+            self._accept(raw)
         return self._smooth

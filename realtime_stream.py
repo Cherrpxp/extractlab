@@ -14,12 +14,14 @@ viewing PC can block access to devices on the dorm WiFi LAN.
 import csv
 import datetime
 import os
+import re
 import threading
 import time
+from collections import deque
 
 import cv2
 import numpy as np
-from flask import Flask, Response, jsonify
+from flask import Flask, Response, jsonify, send_from_directory
 from picamera2 import Picamera2
 
 from boundary_detection import detect_boundary
@@ -41,6 +43,17 @@ _ROI_IS_PLACEHOLDER = False
 
 # Row-profile smoothing window (pixels). Larger = smoother but coarser.
 SMOOTH_KERNEL = 5
+
+# Temporal filter for the per-frame boundary_y. The raw detection jumps ±50 px
+# (and occasionally ~200 px) when it briefly locks onto a competing edge. We
+# publish a smoothed value: reject any raw sample that leaps more than
+# TRACK_MAX_STEP px from the current smoothed position, and report the median
+# of the last TRACK_WIN accepted samples. If raw stays far away for
+# TRACK_RESEED_AFTER frames the interface really did move fast (or was
+# re-acquired) — re-seed on it.
+TRACK_WIN = 9
+TRACK_MAX_STEP = 30
+TRACK_RESEED_AFTER = 15
 
 # Below this |gradient| the frame is treated as "no boundary found" (e.g.
 # camera not settled yet, or the interface signal is too weak without dye).
@@ -93,12 +106,37 @@ time.sleep(1)  # let exposure/gain settle before streaming
 _status_lock = threading.Lock()
 _status = {
     "boundary_y": None,
+    "boundary_y_smooth": None,
     "confidence": 0.0,
     "found": False,
     "roi_brightness": 0.0,
     "fps": 0.0,
     "hint": "starting up",
 }
+
+
+class _Tracker:
+    """Median filter with jump rejection for the boundary row. See the
+    TRACK_* constants above."""
+
+    def __init__(self):
+        self._hist: deque[int] = deque(maxlen=TRACK_WIN)
+        self._smooth: float | None = None
+        self._rejects = 0
+
+    def update(self, raw: int, found: bool) -> float | None:
+        if not found:
+            return self._smooth  # hold last during a dropout
+        if self._smooth is None or abs(raw - self._smooth) <= TRACK_MAX_STEP \
+                or self._rejects >= TRACK_RESEED_AFTER:
+            if self._smooth is not None and abs(raw - self._smooth) > TRACK_MAX_STEP:
+                self._hist.clear()  # re-seeding after a real fast move
+            self._hist.append(raw)
+            self._smooth = float(np.median(self._hist))
+            self._rejects = 0
+        else:
+            self._rejects += 1
+        return self._smooth
 
 # In-browser recording: the ⏺ button on the page starts/stops a CSV that gets
 # one row per processed frame. Used for the drain test — run it while pumping
@@ -143,6 +181,7 @@ def _capture_loop():
     """Single producer: grab frames, run detection, publish JPEG + status."""
     global _latest_jpeg, _frame_count
     x, y, w, h = ROI
+    tracker = _Tracker()
     prev = time.monotonic()
     fps = 0.0
     while True:
@@ -154,6 +193,7 @@ def _capture_loop():
 
         boundary_y, confidence = detect_boundary(frame, roi=ROI, smooth_kernel=SMOOTH_KERNEL)
         found = bool(confidence >= CONFIDENCE_THRESHOLD)
+        y_smooth = tracker.update(int(boundary_y), found)
         roi_gray = cv2.cvtColor(frame[y:y + h, x:x + w], cv2.COLOR_BGR2GRAY)
         roi_brightness = float(roi_gray.mean())
 
@@ -165,8 +205,12 @@ def _capture_loop():
 
         cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 1)
         if found:
-            cv2.line(frame, (x, boundary_y), (x + w, boundary_y), (0, 0, 255), 2)
-        label = f"y={boundary_y} conf={confidence:.1f}" + ("" if found else "  (no boundary)")
+            cv2.line(frame, (x, boundary_y), (x + w, boundary_y), (0, 0, 255), 1)  # raw, thin
+        if y_smooth is not None:
+            ys = int(round(y_smooth))
+            cv2.line(frame, (x, ys), (x + w, ys), (0, 255, 255), 2)  # smoothed, thick yellow
+        label = (f"y={boundary_y} (smooth {int(round(y_smooth))})" if y_smooth is not None
+                 else f"y={boundary_y}") + f" conf={confidence:.1f}" + ("" if found else "  (no boundary)")
         cv2.putText(frame, label, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
                     (0, 255, 0) if found else (0, 165, 255), 2)
 
@@ -178,6 +222,7 @@ def _capture_loop():
         with _status_lock:
             _status.update(
                 boundary_y=int(boundary_y),
+                boundary_y_smooth=None if y_smooth is None else int(round(y_smooth)),
                 confidence=round(confidence, 2),
                 found=found,
                 roi_brightness=round(roi_brightness, 1),
@@ -189,6 +234,7 @@ def _capture_loop():
             if _rec["on"]:
                 _rec["writer"].writerow([
                     round(time.monotonic() - _rec["t0"], 2), int(boundary_y),
+                    "" if y_smooth is None else int(round(y_smooth)),
                     round(confidence, 3), int(found), round(roi_brightness, 1),
                     round(fps, 1),
                 ])
@@ -257,15 +303,16 @@ PAGE = """<!doctype html>
       <p>กล้องจับภาพกรวยแยกเฉพาะในกรอบเขียว (ROI) แล้วหาค่าความสว่างเฉลี่ยของ
       แต่ละแถวพิกเซล มองหาแถวที่ความสว่าง<b>เปลี่ยนแรงที่สุด</b> = ตำแหน่งรอยต่อ
       ระหว่างชั้นน้ำกับชั้นน้ำมัน</p>
-      <p><span style="color:#ff5c5c">เส้นแดง</span> = ตำแหน่งรอยต่อที่ตรวจเจอ &nbsp;·&nbsp;
+      <p><span style="color:#ffd23f">เส้นเหลือง</span> = ค่าที่กรองแล้ว (ใช้อันนี้) &nbsp;·&nbsp;
+      <span style="color:#ff5c5c">เส้นแดงบาง</span> = ค่าดิบรายเฟรม &nbsp;·&nbsp;
       <span style="color:#57d98a">กรอบเขียว</span> = ROI &nbsp;·&nbsp;
-      <code>conf</code> = ความแรงของสัญญาณ (ต้อง ≥ เกณฑ์ถึงจะนับว่าเจอ)</p>
+      <code>conf</code> ต้อง ≥ เกณฑ์ถึงจะนับว่าเจอ</p>
     </div>
 
     <div class="card" id="statusCard">
       <h2>สถานะสด</h2>
       <div class="kv"><span>สถานะ</span><span id="pill" class="pill wait">—</span></div>
-      <div class="kv"><span>ตำแหน่ง y</span><b id="y">—</b></div>
+      <div class="kv"><span>y (กรอง / ดิบ)</span><b><span id="ys">—</span> <span style="color:#8a93a6">/ <span id="y">—</span></span></b></div>
       <div class="kv"><span>conf / เกณฑ์</span><b><span id="conf">—</span> / __THRESH__</b></div>
       <div class="kv"><span>ความสว่าง ROI</span><b id="bri">—</b> <span style="color:#8a93a6">/ 255</span></div>
       <div class="kv"><span>FPS</span><b id="fps">—</b></div>
@@ -276,8 +323,10 @@ PAGE = """<!doctype html>
       <h2>บันทึกผล (drain test)</h2>
       <button id="recBtn">⏺ เริ่มบันทึก</button>
       <p class="sub" style="margin:12px 0 0" id="recInfo">
-        กดเริ่มก่อนดูดน้ำออก · กดหยุดเมื่อเสร็จ · ไฟล์อยู่ใน <code>records/</code>
+        กดเริ่มก่อนดูดน้ำออก · กดหยุดเมื่อเสร็จ
       </p>
+      <h2 style="margin:16px 0 8px">ไฟล์ที่บันทึกไว้</h2>
+      <div id="recFiles" class="sub">—</div>
     </div>
 
     <div class="card __ROIWARN__" id="roiCard">
@@ -310,7 +359,21 @@ PAGE = """<!doctype html>
 <script>
 const recBtn = document.getElementById('recBtn');
 const recInfo = document.getElementById('recInfo');
+const recFiles = document.getElementById('recFiles');
 let recOn = false;
+
+async function loadFiles() {
+  try {
+    const list = await (await fetch('/records')).json();
+    recFiles.innerHTML = list.length
+      ? list.map(f =>
+          `<div style="padding:3px 0;border-bottom:1px dashed #262b36">`
+          + `<a href="/records/${f.name}" target="_blank" style="color:#7db5ff">${f.name}</a>`
+          + ` &nbsp;<span style="color:#8a93a6">${f.rows} แถว · ${f.kb} KB · ${f.mtime}</span></div>`
+        ).join('')
+      : '(ยังไม่มีไฟล์)';
+  } catch (e) { recFiles.textContent = 'โหลดรายการไม่ได้'; }
+}
 
 recBtn.onclick = async () => {
   recBtn.disabled = true;
@@ -321,15 +384,18 @@ recBtn.onclick = async () => {
     } else {
       const r = await (await fetch('/record/stop', {method: 'POST'})).json();
       const s = r.summary || {};
-      const warn = s.max_jump > 25 ? '  ⚠️ y กระโดดเยอะ (อาจ lock ผิด)' : '';
+      const warn = s.max_jump > 25 ? `  ⚠️ smooth ยังกระโดด ${s.max_jump}px` : '  ✓ เรียบ';
       recInfo.textContent = r.ok
         ? `${r.name} · ${r.n} samples · ${r.seconds}s · y ${s.y_min}–${s.y_max} `
-          + `(เลื่อน ${s.y_span}px) · conf ${s.conf_min}–${s.conf_max} · พบ ${s.found_pct}%${warn}`
+          + `(เลื่อน ${s.y_span}px) · conf ${s.conf_min}–${s.conf_max} · พบ ${s.found_pct}% · `
+          + `jump raw ${s.max_jump_raw}px → smooth ${s.max_jump}px${warn}`
         : ('หยุดไม่ได้: ' + r.error);
+      loadFiles();
     }
   } catch (e) { recInfo.textContent = 'error: ' + e; }
   recBtn.disabled = false;
 };
+loadFiles();
 
 async function tick() {
   try {
@@ -338,6 +404,7 @@ async function tick() {
     pill.textContent = s.found ? 'เจอรอยต่อ' : 'กำลังหา…';
     pill.className = 'pill ' + (s.found ? 'ok' : 'wait');
     document.getElementById('y').textContent = s.boundary_y ?? '—';
+    document.getElementById('ys').textContent = s.boundary_y_smooth ?? '—';
     document.getElementById('conf').textContent = s.confidence?.toFixed(1) ?? '—';
     document.getElementById('bri').textContent = s.roi_brightness?.toFixed(0) ?? '—';
     document.getElementById('fps').textContent = s.fps?.toFixed(1) ?? '—';
@@ -384,7 +451,8 @@ def record_start():
         path = os.path.join(RECORD_DIR, "rec_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv")
         fh = open(path, "w", newline="")
         wr = csv.writer(fh)
-        wr.writerow(["elapsed_s", "boundary_y", "confidence", "found", "roi_brightness", "fps"])
+        wr.writerow(["elapsed_s", "boundary_y", "boundary_y_smooth",
+                     "confidence", "found", "roi_brightness", "fps"])
         _rec.update(on=True, path=path, fh=fh, writer=wr, n=0, t0=time.monotonic())
     return jsonify(ok=True, name=os.path.basename(path))
 
@@ -400,25 +468,51 @@ def record_stop():
         seconds = round(time.monotonic() - _rec["t0"], 1)
         _rec.update(on=False, fh=None, writer=None)
 
-    ys, cs, fs = [], [], []
-    with open(path) as fh:
-        next(fh, None)
-        for line in fh:
-            p = line.strip().split(",")
-            if len(p) >= 4:
-                ys.append(int(p[1]))
-                cs.append(float(p[2]))
-                fs.append(int(p[3]))
     summary = {}
-    if ys:
-        jumps = [abs(b - a) for a, b in zip(ys, ys[1:])] or [0]
+    with open(path) as fh:
+        rows = list(csv.DictReader(fh))
+    if rows:
+        raw = [int(r["boundary_y"]) for r in rows]
+        sm = [int(r["boundary_y_smooth"]) for r in rows if r["boundary_y_smooth"] not in ("", None)]
+        cs = [float(r["confidence"]) for r in rows]
+        fs = [int(r["found"]) for r in rows]
+        rjump = max((abs(b - a) for a, b in zip(raw, raw[1:])), default=0)
+        sjump = max((abs(b - a) for a, b in zip(sm, sm[1:])), default=0)
+        series = sm or raw
         summary = {
-            "y_min": min(ys), "y_max": max(ys), "y_span": max(ys) - min(ys),
+            "y_min": min(series), "y_max": max(series), "y_span": max(series) - min(series),
             "conf_min": round(min(cs), 1), "conf_max": round(max(cs), 1),
             "found_pct": round(100 * sum(fs) / len(fs)),
-            "max_jump": max(jumps),
+            "max_jump": sjump, "max_jump_raw": rjump,
         }
     return jsonify(ok=True, name=os.path.basename(path), n=n, seconds=seconds, summary=summary)
+
+
+_REC_NAME_RE = re.compile(r"^rec_\d{8}_\d{6}\.csv$")
+
+
+@app.route("/records")
+def records_list():
+    out = []
+    if os.path.isdir(RECORD_DIR):
+        for name in sorted(os.listdir(RECORD_DIR), reverse=True):
+            if not _REC_NAME_RE.match(name):
+                continue
+            p = os.path.join(RECORD_DIR, name)
+            with open(p) as fh:
+                n = max(sum(1 for _ in fh) - 1, 0)
+            st = os.stat(p)
+            out.append({"name": name, "rows": n, "kb": round(st.st_size / 1024, 1),
+                        "mtime": time.strftime("%m-%d %H:%M", time.localtime(st.st_mtime))})
+    return jsonify(out)
+
+
+@app.route("/records/<name>")
+def records_get(name):
+    if not _REC_NAME_RE.match(name):
+        return "bad name", 400
+    return send_from_directory(RECORD_DIR, name, mimetype="text/csv",
+                               as_attachment=False)
 
 
 @app.route("/video_feed")

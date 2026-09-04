@@ -33,12 +33,15 @@ nohup ./run_stream.sh > run_stream.log 2>&1 &     # supervisor: รีสตา�
 EXPOSURE_US=25000 GAIN=8 WB_RED=2.14 WB_BLUE=1.76 \
 ROI_X=555 ROI_Y=370 ROI_W=175 ROI_H=290 python3 realtime_stream.py
 
-# ทดสอบ — ไม่มี pytest/lint/build · แต่ละสคริปต์รัน __main__ เป็น self-check เอง
-python3 demo.py            # integration smoke test — ต้องขึ้น RESULT: PASS (มี assert ในตัว)
-python3 turbidity_dct.py   # self-check ราย module ("run a single test" = รันไฟล์นั้น)
+# ทดสอบ
+python3 -m pytest -q                       # unit — tests/test_tracking.py (S1-S6), test_volume_model.py
+python3 -m pytest tests/test_tracking.py   # "run a single test file"
+python3 -m pytest -k s4                     # "run a single test"
+python3 demo.py            # integration smoke test — ต้องขึ้น RESULT: PASS
+python3 turbidity_dct.py   # โมดูลที่ยังไม่มีเทสต์ pytest มี __main__ เป็น self-check
 python3 volume_model.py
 python3 synthetic_data.py
-#   boundary_detection.py ไม่มี __main__ — ทดสอบผ่าน demo.py
+# ไม่มี lint/build · boundary_detection.py ทดสอบผ่าน demo.py
 
 # วิเคราะห์รูปจริง 1 ภาพ
 python3 analyze_real_photo.py photo.jpg --roi X Y W H --profile-csv prof.csv
@@ -56,6 +59,7 @@ python3 analyze_real_photo.py photo.jpg --roi X Y W H --profile-csv prof.csv
 | ไฟล์ | หน้าที่ |
 |---|---|
 | `boundary_detection.py` | หา `boundary_y` + `conf` จาก row-wise intensity gradient — numpy/OpenCV array ล้วน ไม่มี camera I/O |
+| `tracking.py` | `Tracker` — กรอง `boundary_y` ตามเวลา (median + jump-reject + `draining` gate) · hardware-free · เจ้าของ `CONFIDENCE_THRESHOLD` + `TRACK_*` · มี pytest |
 | `turbidity_dct.py` | `dct_sharpness()` + `TurbidityMonitor` — ตัดสิน warming_up / turbid / clearing / clear |
 | `volume_model.py` | `FrustumModel` + `CalibrationTable` (interpolate / JSON / inverse) — geometry ยังเป็น placeholder |
 | `synthetic_data.py` | สร้างเฟรม/ลำดับการไขน้ำปลอมไว้ทดสอบก่อนมีข้อมูลจริง |
@@ -80,8 +84,9 @@ python3 analyze_real_photo.py photo.jpg --roi X Y W H --profile-csv prof.csv
 
 **2. ระบบสด `realtime_stream.py`** (ต้องมี Pi + กล้อง) — โครงเป็น **producer เดียว + Flask threaded หลายผู้บริโภค**:
 - เธรด `_capture_loop` เป็น producer เดียว: `capture_array()` → `detect_boundary(frame, ROI)` →
-  `_Tracker.update()` (median `TRACK_WIN` เฟรม + ปฏิเสธการกระโดด > `TRACK_MAX_STEP` px, re-seed หลังติดค้าง
-  `TRACK_RESEED_AFTER` เฟรม) → เขียน `_latest_jpeg` + dict `_status` + (ถ้ากำลังบันทึก) หนึ่งแถวใน CSV
+  `tracking.Tracker.update(raw, conf, draining=_rec["on"])` → เขียน `_latest_jpeg` + dict `_status` +
+  (ถ้ากำลังบันทึก) หนึ่งแถวใน CSV · **`draining=True` ตอนกำลังบันทึก → Tracker ไม่ re-seed เลย** (ระหว่างไขน้ำ
+  รอยต่อขยับช้า การกระโดดใหญ่ = lock ผิดเสมอ · replay `rec_20260904_115249.csv`: max jump 151 → 12 px)
 - Flask serve อย่างเดียว: `/video_feed` สตรีม `_latest_jpeg`, `/status` คืน `_status` + สถานะการบันทึก,
   `/records` + `/record/start|stop` จัดการไฟล์ใน `records/`
 - เธรด `_watchdog`: ถ้าไม่มีเฟรมใหม่ 15 วิ → `os._exit(1)` แล้ว `run_stream.sh` (loop ข้างนอก) relaunch ให้ → กู้กล้องค้างได้เอง
@@ -111,8 +116,9 @@ python3 analyze_real_photo.py photo.jpg --roi X Y W H --profile-csv prof.csv
 
 - **P0 เสร็จ** — โมดูลหลัก + เครื่องมือครบ, git + push GitHub (`Cherrpxp/extractlab`)
 - **P1 กำลังทำ** — ฉากหลังดำ + ROI แคบ → ตัวตรวจจับเกาะรอยต่อน้ำ/น้ำมันจริง (`conf` ~12 เทียบเกณฑ์ 3)
-  ทดสอบไขน้ำครั้งแรก 219 วิ: แนวโน้มถูก (เลื่อนลง 104 px) แต่ค่ากรองยังกระโดด 151 px ตอน `conf` ตก → **ยังไม่ผ่านเกต**
-  เหลือ: หด ROI ให้แคบลงอีก · ไม่ให้เฟรม `conf` ต่ำ re-seed tracker · บังคับ monotonic ระหว่างบันทึก · อัดซ้ำเทียบกราฟ
+  ทดสอบไขน้ำครั้งแรก 219 วิ: แนวโน้มถูก (เลื่อนลง 104 px) · ปรับ `Tracker` ไม่ให้ re-seed ระหว่างไขน้ำแล้ว →
+  replay ข้อมูลเดิม: max jump 151 → 12 px, jumps>20px 14 → 0 · **ยังต้องอัดไขน้ำสดอีกรอบเพื่อยืนยันเกต**
+  เหลือ: หด ROI ให้แคบลงอีก · อัดไขน้ำสดใหม่เทียบกราฟ
 - **P2–P7** ยังไม่เริ่ม (calibrate ปริมาตร → ต่อปั๊ม → closed loop → RMSE 10 รอบ → ไซโคลเฮกเซน → รายงาน)
 
 ---

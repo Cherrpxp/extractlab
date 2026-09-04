@@ -2,6 +2,8 @@
 # picamera2 is NOT installed via pip — it comes from apt and needs system
 # libcamera bindings:
 #   sudo apt install -y python3-picamera2
+# Tests use pytest, also from apt (Debian is PEP-668 externally-managed):
+#   sudo apt install -y python3-pytest    # then: python3 -m pytest -q
 # If using a venv, create it with --system-site-packages so it can see
 # picamera2, e.g.: python3 -m venv --system-site-packages .venv
 

@@ -11,6 +11,8 @@ If the page won't load, check CLAUDE.md's networking note: a VPN on the
 viewing PC can block access to devices on the dorm WiFi LAN.
 """
 
+import csv
+import datetime
 import os
 import threading
 import time
@@ -24,12 +26,18 @@ from boundary_detection import detect_boundary
 
 # --- Camera framing --------------------------------------------------------
 # (x, y, w, h) in pixel coordinates of the full 1280x720 frame, cropped to
-# just the funnel column with margin above/below the expected interface.
-# THESE ARE PLACEHOLDERS — set them to match your actual camera framing
-# (capture a still, read pixel coordinates off it, crop to just the pear
-# body: exclude the neck at the top and the stopcock/stem at the bottom).
-ROI = (560, 80, 160, 560)
-_ROI_IS_PLACEHOLDER = ROI == (560, 80, 160, 560)
+# the LIQUID COLUMN only — inside the vessel walls, bracketing where the
+# liquid-liquid interface sits and will travel while draining. Exclude the
+# top air/liquid surface and the vessel base. Override without editing:
+#   ROI_X=555 ROI_Y=370 ROI_W=175 ROI_H=290 python3 realtime_stream.py
+# Current values: beaker on a black background, lab bench (2026-09-04).
+ROI = (
+    int(os.environ.get("ROI_X", 555)),
+    int(os.environ.get("ROI_Y", 370)),
+    int(os.environ.get("ROI_W", 175)),
+    int(os.environ.get("ROI_H", 290)),
+)
+_ROI_IS_PLACEHOLDER = False
 
 # Row-profile smoothing window (pixels). Larger = smoother but coarser.
 SMOOTH_KERNEL = 5
@@ -50,12 +58,15 @@ JPEG_QUALITY = 80
 # AnalogueGain = brighter but noisier (gain > ~8 gets visibly grainy). In a
 # dim room raise exposure first, then gain — and really, add a light: no gain
 # setting recovers a clean signal from a near-black scene.
-EXPOSURE_US = int(os.environ.get("EXPOSURE_US", 120000))
+# Current values: lab bench, beaker on black background (2026-09-04) — ROI mean
+# ~150/255. GAIN 8 is a bit grainy; trade toward EXPOSURE_US if the bench is
+# stable enough for the lower frame rate.
+EXPOSURE_US = int(os.environ.get("EXPOSURE_US", 25000))
 GAIN = float(os.environ.get("GAIN", 8.0))
-# White balance (red gain, blue gain), read off AWB after it settled under
-# the current room lighting. Re-run the AWB calibration if the lighting changes.
-WB_RED = float(os.environ.get("WB_RED", 1.97))
-WB_BLUE = float(os.environ.get("WB_BLUE", 1.73))
+# White balance (red gain, blue gain), read off AWB under the current lighting.
+# Re-run the AWB calibration if the lighting changes.
+WB_RED = float(os.environ.get("WB_RED", 2.14))
+WB_BLUE = float(os.environ.get("WB_BLUE", 1.76))
 
 app = Flask(__name__)
 
@@ -88,6 +99,13 @@ _status = {
     "fps": 0.0,
     "hint": "starting up",
 }
+
+# In-browser recording: the ⏺ button on the page starts/stops a CSV that gets
+# one row per processed frame. Used for the drain test — run it while pumping
+# the lower layer out, then read the summary the ⏹ button prints.
+RECORD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "records")
+_rec_lock = threading.Lock()
+_rec = {"on": False, "path": None, "fh": None, "writer": None, "n": 0, "t0": 0.0}
 
 
 def _hint_for(found: bool, confidence: float, roi_brightness: float) -> str:
@@ -147,6 +165,16 @@ def _capture_loop():
                 hint=_hint_for(found, confidence, roi_brightness),
             )
 
+        with _rec_lock:
+            if _rec["on"]:
+                _rec["writer"].writerow([
+                    round(time.monotonic() - _rec["t0"], 2), int(boundary_y),
+                    round(confidence, 3), int(found), round(roi_brightness, 1),
+                    round(fps, 1),
+                ])
+                _rec["n"] += 1
+                _rec["fh"].flush()
+
 
 _latest_jpeg = b""
 threading.Thread(target=_capture_loop, daemon=True).start()
@@ -192,6 +220,10 @@ PAGE = """<!doctype html>
   li.done { color: #6d7688; text-decoration: line-through; }
   .warn { background: #3a1c1c; border-color: #6b2b2b; color: #f0a3a3; }
   code { background: #262b36; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  button { font: inherit; padding: 9px 18px; border-radius: 6px; border: 1px solid #3a4150;
+           background: #1e3a2a; color: #e6e6e6; cursor: pointer; }
+  button:hover { filter: brightness(1.18); }
+  button.rec { background: #5a1e1e; }
 </style></head><body>
 <div class="wrap">
   <div class="video"><img src="/video_feed" alt="live stream"></div>
@@ -217,6 +249,14 @@ PAGE = """<!doctype html>
       <div class="kv"><span>ความสว่าง ROI</span><b id="bri">—</b> <span style="color:#8a93a6">/ 255</span></div>
       <div class="kv"><span>FPS</span><b id="fps">—</b></div>
       <div class="hint" id="hint">—</div>
+    </div>
+
+    <div class="card">
+      <h2>บันทึกผล (drain test)</h2>
+      <button id="recBtn">⏺ เริ่มบันทึก</button>
+      <p class="sub" style="margin:12px 0 0" id="recInfo">
+        กดเริ่มก่อนดูดน้ำออก · กดหยุดเมื่อเสร็จ · ไฟล์อยู่ใน <code>records/</code>
+      </p>
     </div>
 
     <div class="card __ROIWARN__" id="roiCard">
@@ -247,6 +287,29 @@ PAGE = """<!doctype html>
   </div>
 </div>
 <script>
+const recBtn = document.getElementById('recBtn');
+const recInfo = document.getElementById('recInfo');
+let recOn = false;
+
+recBtn.onclick = async () => {
+  recBtn.disabled = true;
+  try {
+    if (!recOn) {
+      const r = await (await fetch('/record/start', {method: 'POST'})).json();
+      recInfo.textContent = r.ok ? 'กำลังบันทึก… ' + r.name : ('เริ่มไม่ได้: ' + r.error);
+    } else {
+      const r = await (await fetch('/record/stop', {method: 'POST'})).json();
+      const s = r.summary || {};
+      const warn = s.max_jump > 25 ? '  ⚠️ y กระโดดเยอะ (อาจ lock ผิด)' : '';
+      recInfo.textContent = r.ok
+        ? `${r.name} · ${r.n} samples · ${r.seconds}s · y ${s.y_min}–${s.y_max} `
+          + `(เลื่อน ${s.y_span}px) · conf ${s.conf_min}–${s.conf_max} · พบ ${s.found_pct}%${warn}`
+        : ('หยุดไม่ได้: ' + r.error);
+    }
+  } catch (e) { recInfo.textContent = 'error: ' + e; }
+  recBtn.disabled = false;
+};
+
 async function tick() {
   try {
     const s = await (await fetch('/status')).json();
@@ -258,6 +321,9 @@ async function tick() {
     document.getElementById('bri').textContent = s.roi_brightness?.toFixed(0) ?? '—';
     document.getElementById('fps').textContent = s.fps?.toFixed(1) ?? '—';
     document.getElementById('hint').textContent = '👉 ' + s.hint;
+    recOn = s.rec_on;
+    recBtn.textContent = recOn ? `⏹ หยุด  (${s.rec_seconds}s · ${s.rec_n})` : '⏺ เริ่มบันทึก';
+    recBtn.className = recOn ? 'rec' : '';
   } catch (e) { /* keep last values on a hiccup */ }
 }
 setInterval(tick, 1000); tick();
@@ -279,7 +345,59 @@ def index():
 @app.route("/status")
 def status():
     with _status_lock:
-        return jsonify(dict(_status))
+        d = dict(_status)
+    with _rec_lock:
+        d["rec_on"] = _rec["on"]
+        d["rec_n"] = _rec["n"]
+        d["rec_seconds"] = round(time.monotonic() - _rec["t0"], 1) if _rec["on"] else 0
+        d["rec_name"] = os.path.basename(_rec["path"]) if _rec["path"] else None
+    return jsonify(d)
+
+
+@app.route("/record/start", methods=["GET", "POST"])
+def record_start():
+    with _rec_lock:
+        if _rec["on"]:
+            return jsonify(ok=False, error="already recording", name=os.path.basename(_rec["path"]))
+        os.makedirs(RECORD_DIR, exist_ok=True)
+        path = os.path.join(RECORD_DIR, "rec_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv")
+        fh = open(path, "w", newline="")
+        wr = csv.writer(fh)
+        wr.writerow(["elapsed_s", "boundary_y", "confidence", "found", "roi_brightness", "fps"])
+        _rec.update(on=True, path=path, fh=fh, writer=wr, n=0, t0=time.monotonic())
+    return jsonify(ok=True, name=os.path.basename(path))
+
+
+@app.route("/record/stop", methods=["GET", "POST"])
+def record_stop():
+    with _rec_lock:
+        if not _rec["on"]:
+            return jsonify(ok=False, error="not recording")
+        _rec["fh"].flush()
+        _rec["fh"].close()
+        path, n = _rec["path"], _rec["n"]
+        seconds = round(time.monotonic() - _rec["t0"], 1)
+        _rec.update(on=False, fh=None, writer=None)
+
+    ys, cs, fs = [], [], []
+    with open(path) as fh:
+        next(fh, None)
+        for line in fh:
+            p = line.strip().split(",")
+            if len(p) >= 4:
+                ys.append(int(p[1]))
+                cs.append(float(p[2]))
+                fs.append(int(p[3]))
+    summary = {}
+    if ys:
+        jumps = [abs(b - a) for a, b in zip(ys, ys[1:])] or [0]
+        summary = {
+            "y_min": min(ys), "y_max": max(ys), "y_span": max(ys) - min(ys),
+            "conf_min": round(min(cs), 1), "conf_max": round(max(cs), 1),
+            "found_pct": round(100 * sum(fs) / len(fs)),
+            "max_jump": max(jumps),
+        }
+    return jsonify(ok=True, name=os.path.basename(path), n=n, seconds=seconds, summary=summary)
 
 
 @app.route("/video_feed")

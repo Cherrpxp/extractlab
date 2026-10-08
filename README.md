@@ -7,14 +7,15 @@ Adapted from **Chem-SDI** (Fu et al., *Microchemical Journal* 227, 2026), with t
 hardware parts removed, keeping DCT turbidity monitoring and row-wise gradient boundary detection.
 
 Full requirements and reasoning: [`PRD.md`](docs/PRD.md) · working context for development: [`CLAUDE.md`](CLAUDE.md) ·
-Agile backlog: [`BACKLOG.md`](docs/BACKLOG.md) · development process (Agile/SDD/TDD): [`PROCESS.md`](docs/PROCESS.md) ·
-dated, verified history: [`CHANGELOG.md`](CHANGELOG.md) · research-plan flow diagram (separate artifact).
+Agile backlog: [`BACKLOG.md`](docs/BACKLOG.md) · roadmap/milestones/sprints/stories at a glance: [`ROADMAP.md`](docs/ROADMAP.md) ·
+development process (Agile/SDD/TDD): [`PROCESS.md`](docs/PROCESS.md) · dated, verified history: [`CHANGELOG.md`](CHANGELOG.md) ·
+research-plan flow diagram (separate artifact).
 
 ```
 extractlab/
 ├── README.md, CLAUDE.md        # repo-root docs (GitHub / Claude Code conventions)
 ├── CHANGELOG.md                # dated, verified history — see docs/BACKLOG.md for item IDs
-├── docs/                       # PRD.md, BACKLOG.md, PROCESS.md
+├── docs/                       # PRD.md, BACKLOG.md, ROADMAP.md, PROCESS.md
 ├── boundary_detection.py       # core algorithms — flat, no build step, run directly
 ├── tracking.py
 ├── turbidity_dct.py

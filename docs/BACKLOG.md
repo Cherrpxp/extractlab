@@ -5,7 +5,8 @@ and the PRD gate that closes it. Status: `[x]` done, `[~]` in progress, `[ ]` no
 ID (`P<phase>-NN`) used to cross-reference it from `CHANGELOG.md` and from commit messages (`type(P1-05): ...`).
 
 See `PRD.md` for full requirements and reasoning, `PROCESS.md` for the development workflow, `CHANGELOG.md` for
-the dated, verified history, and `CLAUDE.md` for architecture and operational notes.
+the dated, verified history, `ROADMAP.md` for the same items rolled up into roadmap/milestones/sprints tables,
+and `CLAUDE.md` for architecture and operational notes.
 
 ---
 

@@ -1,163 +1,197 @@
-# เอกสารกำหนดขอบเขตและข้อกำหนดของระบบ (PRD)
-### ระบบแยกชั้นของเหลว–ของเหลวอัตโนมัติด้วยการมองเห็น สำหรับคู่น้ำ–ไซโคลเฮกเซน
+# Project Requirements Document (PRD)
+### Vision-Guided Automated Liquid–Liquid Separation for Water–Cyclohexane
 
-*ปรับปรุงล่าสุด 4 กันยายน 2026 · เอกสารประกอบ: [`README.md`](README.md) (โครงสร้างซอฟต์แวร์), [`CLAUDE.md`](CLAUDE.md) (บริบทและฮาร์ดแวร์), ผังลำดับงานวิจัย (artifact แยก)*
-
----
-
-## 1. ที่มาและช่องว่างของงานเดิม
-
-การสกัดแบบของเหลว–ของเหลว (liquid–liquid extraction, LLE) ต้องแยกสองชั้นออกจากกันหลังจากเขย่าและตั้งทิ้งไว้ให้แยกเฟส
-ในการทำมือ ผู้ทดลองต้องเฝ้าดูตำแหน่งรอยต่อระหว่างสองชั้นแล้วเปิด–ปิดวาล์วเอง จังหวะการปิดวาล์วขึ้นกับสายตาและปฏิกิริยาของคน
-ทำให้ปริมาตรที่แยกได้ในแต่ละครั้งไม่คงที่ ปัญหานี้รุนแรงขึ้นเมื่อของเหลวทั้งสองชั้น**ใสและไม่มีสี** อย่างคู่น้ำ–ไซโคลเฮกเซน
-เพราะสิ่งเดียวที่ตาเห็นคือแนวเมนิสคัสจาง ๆ กับการหักเหของแสงที่ผิวรอยต่อ
-
-งานของ Fu et al. (Chem-SDI, *Microchemical Journal* 227, 2026) แก้ปัญหาการตรวจจับนี้ด้วยโมเดล segmentation (YOLOv8n-seg)
-ร่วมกับชุดควบคุมสองบอร์ด (Orange Pi + STM32) และมอเตอร์สเต็ปเปอร์ขับ stopcock ความแม่นยำที่ได้แลกมากับ
-การต้องมีชุดข้อมูลที่ label แล้ว ขั้นตอนการเทรนโมเดล และฮาร์ดแวร์เฉพาะทาง
-
-**คำถามของโปรเจกต์นี้:** เทคนิค *classical* สองอย่างที่อยู่ในเปเปอร์เดียวกัน — การเฝ้าความขุ่นด้วย DCT
-และการหารอยต่อจาก gradient ความสว่างรายแถวพิกเซล — เพียงลำพังจะเพียงพอต่อการขับระบบแยกของเหลวอัตโนมัติ
-บน **Raspberry Pi 5 บอร์ดเดียว** โดยใช้ปั๊มราคาถูกผ่าน relay แทน stopcock มอเตอร์ ได้หรือไม่
-ถ้าได้ วิธีนี้ย้ายไปใช้บนโต๊ะปฏิบัติการใดก็ได้โดยไม่ต้องมี GPU และไม่ต้องลงแรง label ข้อมูล
+*Last updated 8 October 2026 (translated to English; status synced with the current repository state) ·
+companion docs: [`README.md`](README.md) (code layout), [`CLAUDE.md`](CLAUDE.md) (context and hardware),
+[`BACKLOG.md`](BACKLOG.md) (Agile backlog), [`PROCESS.md`](PROCESS.md) (Agile/SDD/TDD workflow), the research-plan
+flow diagram (a separate artifact)*
 
 ---
 
-## 2. สิ่งที่ระบบต้องทำ
+## 1. Background and the Gap in Prior Work
 
-### 2.1 มองเห็นและติดตามรอยต่อ
+Liquid–liquid extraction (LLE) requires separating two phases after they have been shaken and left to settle.
+Done by hand, the experimenter watches the position of the interface between the two layers and opens and
+closes a valve themselves; the timing of that valve depends on eyesight and reaction time, so the volume
+separated varies from run to run. The problem gets worse when both phases are **clear and colorless**, as with
+water–cyclohexane, because the only visible cue is a faint meniscus line and the way light refracts at the
+interface.
 
-หัวใจของระบบคือการอ่านตำแหน่งรอยต่อจากภาพให้ได้ต่อเนื่องและเสถียรพอที่จะใช้ตัดสินใจสั่งปั๊ม
-กล้องจับภาพเฉพาะในกรอบ ROI ที่กำหนดไว้รอบคอลัมน์ของเหลว หา gradient ความสว่างเฉลี่ยรายแถว
-แล้วเลือกแถวที่ความสว่างเปลี่ยนแรงที่สุดเป็นตำแหน่งรอยต่อ พร้อมค่าความเชื่อมั่น `conf` (ขนาดของ gradient ณ แถวนั้น)
-เนื่องจากค่ารายเฟรมกระโดดได้มากเมื่อไปเกาะขอบอื่นชั่วขณะ ระบบจึงต้องส่งค่าที่ผ่านการกรองตามเวลา (`boundary_y_smooth`)
-ควบคู่กับค่าดิบ และต้องประเมินความขุ่นของบริเวณรอยต่อ (ดัชนีความคมจาก DCT) เพื่อบอกว่าชั้นแยกตัวนิ่งแล้วหรือยัง
+Fu et al.'s work (Chem-SDI, *Microchemical Journal* 227, 2026) solves the detection problem with a segmentation
+model (YOLOv8n-seg), a two-board control stack (Orange Pi + STM32), and a stepper motor driving the stopcock.
+That accuracy is paid for with a labeled dataset, a model-training step, and purpose-built hardware.
 
-### 2.2 แปลงตำแหน่งเป็นปริมาตร
+**This project's question:** are the two *classical* techniques in that same paper — DCT-based turbidity
+monitoring and row-wise brightness-gradient interface detection — enough on their own to drive an automated
+separation system on a **single Raspberry Pi 5**, using a cheap pump through a relay instead of a stepper-driven
+stopcock? If so, the method travels to any lab bench without a GPU and without the effort of labeling data.
 
-ต้องแปลงตำแหน่งรอยต่อ (แถวพิกเซล) เป็นความสูงจริง แล้วเป็นปริมาตรของชั้นที่อยู่ใต้รอยต่อ
-เนื่องจากเปลี่ยนภาชนะทดสอบจากกรวยแยกทรงลูกแพร์มาเป็น**บีกเกอร์ทรงกระบอก** ความสัมพันธ์ความสูง–ปริมาตร
-จึงเป็นเส้นตรง (V = πr²h) ต้องมีตารางเทียบที่บันทึก/โหลดได้ และหาค่าผกผัน (ความสูงที่ปริมาตรเป้าหมาย)
-เพื่อคำนวณจุดที่ต้องสั่งปั๊มหยุด
+---
 
-### 2.3 ควบคุมปั๊มและความปลอดภัย *(ยังไม่เริ่ม)*
+## 2. What the System Must Do
 
-GPIO ของ Pi สั่งเฉพาะขา logic ของ relay module เพื่อเปิด–ปิดปั๊มที่ใช้แหล่งจ่าย 12 V แยกต่างหาก
-ไฟของปั๊มต้องไม่ผ่านขาใด ๆ ของ Pi เด็ดขาด ระบบเริ่มปั๊มเมื่อรอยต่อ (ค่ากรอง) ถึงระดับเริ่มและชั้นแยกตัวนิ่งแล้ว
-หยุดปั๊มเมื่อรอยต่อถึงระดับเป้าหมาย และต้องมีเงื่อนไขหยุดฉุกเฉิน (รอยต่อหาย กล้องค้าง หรือเกินเวลาที่ตั้งไว้)
+### 2.1 Seeing and Tracking the Interface
 
-### 2.4 ส่วนต่อประสานและการเก็บข้อมูล
+The heart of the system is reading the interface position from the image continuously and stably enough to
+trigger the pump. The camera only looks inside a configured ROI around the liquid column, computes the average
+row-wise brightness gradient, and picks the row with the strongest change in brightness as the interface, along
+with a confidence value `conf` (the size of the gradient at that row). Because the per-frame reading can jump a
+lot when it briefly locks onto a different edge, the system must also publish a time-filtered value
+(`boundary_y_smooth`) alongside the raw one, and must assess the turbidity around the interface (a DCT-based
+sharpness index) to tell whether the layers have settled.
 
-ผู้ทดลองดูภาพสดพร้อมเส้นตรวจจับ อ่านสถานะ (ตำแหน่ง ค่ากรอง `conf` ความสว่าง ROI อัตราเฟรม)
-และกดปุ่มบันทึกได้จากหน้าเว็บบนเครื่องอื่นใน LAN เดียวกัน การบันทึกแต่ละครั้งเขียน CSV หนึ่งแถวต่อเฟรม
-ลง `records/` เปิดดูและดาวน์โหลดได้จากหน้าเว็บ และเมื่อกล้องค้าง (CSI timeout) ระบบต้องกู้กลับเองโดยไม่ต้อง SSH เข้าไปแก้
+### 2.2 Converting Position to Volume
 
-### สรุปข้อกำหนดเชิงหน้าที่
+The interface position (a pixel row) must convert to a real height, then to the volume of the layer below it.
+Since the test vessel changed from a pear-shaped separatory funnel to a **cylindrical beaker**, the
+height–volume relationship is linear (V = πr²h). The system needs a calibration table that can be saved and
+loaded, with an inverse lookup (the height at a target volume) to compute where the pump should stop.
 
-| รหัส | ข้อกำหนด | สถานะ |
+### 2.3 Pump Control and Safety *(not started)*
+
+The Pi's GPIO only drives the logic pin of a relay module, switching a pump powered by a separate 12V supply;
+pump power must never pass through any Pi pin. The system starts the pump once the (filtered) interface reaches
+the starting level and the layers have settled, and stops it once the interface reaches the target level. There
+must be emergency-stop conditions: the interface is lost, the camera stalls, or a time limit is exceeded.
+
+### 2.4 Interface and Data Logging
+
+The experimenter watches the live image with the detected line drawn on it, reads the status (position, `conf`,
+ROI brightness, frame rate), and can start/stop a recording from a web page on another machine on the same LAN.
+Each recording writes one CSV row per frame to `records/`, browsable and downloadable from the same page. When
+the camera stalls (a CSI timeout), the system must recover on its own without SSH-ing in to fix it.
+
+### Functional Requirements Summary
+
+| ID | Requirement | Status |
 |---|---|---|
-| FR-1 | อ่าน `boundary_y` และ `conf` จากทุกเฟรมในกรอบ ROI | มีแล้ว |
-| FR-2 | กรองค่าตามเวลาเป็น `boundary_y_smooth` (median + ตัดการกระโดดผิดปกติ) | มีแล้ว — ยังมีสไปก์เมื่อ `conf` ต่ำ |
-| FR-3 | ประเมินความขุ่นด้วย DCT และบอกสถานะแยกตัวนิ่ง/ยังขุ่น | มีแล้ว |
-| FR-4 | ROI, exposure, white balance ปรับผ่าน env var โดยไม่แก้โค้ด | มีแล้ว |
-| FR-5 | แปลง `boundary_y` → ความสูง → ปริมาตร (บีกเกอร์ทรงกระบอก) พร้อมค่าผกผัน | โมเดลมีแล้ว รอค่าจริงจากการวัด |
-| FR-6 | GPIO → relay → ปั๊ม 12 V แยก; เริ่ม/หยุดตามตำแหน่งรอยต่อและสถานะความขุ่น | ยังไม่เริ่ม |
-| FR-7 | เงื่อนไขหยุดฉุกเฉิน (รอยต่อหาย / กล้องค้าง / เกินเวลา) | ยังไม่เริ่ม |
-| FR-8 | ภาพสด + แผงสถานะ + ปุ่มบันทึก + หน้าเปิด/ดาวน์โหลด CSV | มีแล้ว |
-| FR-9 | กล้อง/สตรีมค้างแล้วกู้กลับเองภายใน ~20 วินาที | มีแล้ว (watchdog + supervisor) |
+| FR-1 | Read `boundary_y` and `conf` from every frame inside the ROI | Done |
+| FR-2 | Filter over time into `boundary_y_smooth` (median + reject abnormal jumps) | Done — the draining re-seed bug is fixed (see §4); still needs a fresh live run to confirm the gate |
+| FR-3 | Assess turbidity via DCT and report settled vs. still-turbid | Done |
+| FR-4 | ROI, exposure, white balance adjustable via env var, no code changes | Done |
+| FR-5 | Convert `boundary_y` -> height -> volume (cylindrical beaker) with an inverse lookup | Model done, waiting on real calibration measurements |
+| FR-6 | GPIO -> relay -> a separate 12V pump; start/stop based on interface position and turbidity | Not started |
+| FR-7 | Emergency-stop conditions (interface lost / camera stalled / timeout) | Not started |
+| FR-8 | Live view + status panel + recording button + a page to open/download CSVs | Done |
+| FR-9 | Camera/stream recovers on its own within ~20 seconds of stalling | Done (watchdog + supervisor) |
 
 ---
 
-## 3. ขอบเขต — สิ่งที่จงใจไม่ทำ และเหตุผล
+## 3. Scope — What We Deliberately Don't Do, and Why
 
-ข้อจำกัดต่อไปนี้เป็นการเลือกโดยตั้งใจ เพื่อให้ระบบทำซ้ำได้บนฮาร์ดแวร์ทั่วไปและอยู่ในกรอบเวลาของงานวิจัยหนึ่งภาคเรียน
+The following limits are deliberate choices, meant to keep the system reproducible on common hardware and
+within the timeframe of one term's research.
 
-- **ไม่ใช้ machine learning** — ทั้งโปรเจกต์คือการทดสอบว่าเทคนิค classical เพียงพอหรือไม่ การเพิ่มโมเดลกลับเข้ามา
-  ทำให้คำถามวิจัยหมดความหมาย
-- **หนึ่ง setup ต่อการ calibrate หนึ่งครั้ง** — ตารางเทียบพิกเซล↔มิลลิเมตรและปริมาตรผูกกับตำแหน่งกล้องและภาชนะโดยธรรมชาติ
-  ถ้ากล้องหรือบีกเกอร์ขยับ ค่าที่ calibrate ไว้ใช้ไม่ได้ ระบบจึงสมมติว่าทุกอย่างยึดนิ่งตลอดชุดการทดลอง
-- **ภาชนะเดียว สองชั้น** — ไม่รองรับของเหลวมากกว่าสองชั้น หรืออิมัลชันที่ไม่แยกตัว
-- **มีผู้ทดลองอยู่ด้วยตลอด** — ไม่ทำงานแบบไร้คนดูแล โดยเฉพาะเมื่อใช้ไซโคลเฮกเซนซึ่งไวไฟและระเหยง่าย
-- **ไม่ออกแบบวงจร/บอร์ดเอง** — ใช้ relay module สำเร็จรูปและแหล่งจ่าย 12 V แยก
-- **ตั้งค่าผ่านไฟล์/env var** ไม่มี GUI ตั้งค่าเต็มรูปแบบ ผู้ใช้คือผู้ทำวิจัยเองที่เข้าถึงโค้ดได้
-
----
-
-## 4. เกณฑ์ชี้วัดความสำเร็จ
-
-แต่ละเฟสในผังลำดับงานมี "เกต" ที่ต้องผ่านก่อนไปต่อ ค่าตัวเลขด้านล่างเป็นเป้าหมายตั้งต้นพร้อมเหตุผล
-และจะยืนยันอีกครั้งหลังผ่านเฟส 1–2
-
-**การติดตามรอยต่อ (เกตเฟส 1).**
-ค่ากรอง `boundary_y_smooth` ต้องเลื่อนไปทางเดียว (ลง) ตลอดช่วงไขน้ำ และไม่กระโดดเกิน ~30 พิกเซลระหว่างเฟรมสองเฟรมที่ติดกัน
-เกณฑ์ 30 พิกเซลมาจากผลกระทบต่อการตัดสินใจ: ที่กรอบภาพปัจจุบัน 30 พิกเซลคิดเป็นความสูงราวไม่กี่มิลลิเมตร
-ถ้าปล่อยให้ค่ากระโดด 100+ พิกเซลจากการเกาะขอบผิด แล้วตรรกะหยุดปั๊มไปยึดค่านั้น จะทำให้ดูดเกินหรือขาดไปราว 10 มิลลิลิตร
-นอกจากนี้ต้องตรวจเจอรอยต่อ (`conf` เหนือเกณฑ์) อย่างน้อย 95% ของเฟรม
-*ผลการทดสอบไขน้ำ 4 ก.ย. (219 วินาที): แนวโน้มถูกต้อง ค่ากรองเลื่อนลง 104 พิกเซลตามน้ำที่ถูกดูดออก เจอรอยต่อ 100% ของเฟรม
-แต่ค่ากรอง (เวอร์ชันเดิม) กระโดดสูงสุด 151 พิกเซลจากการ re-seed ผิดตอน `conf` ตก · ปรับ `tracking.Tracker` ให้ไม่ re-seed
-เลยระหว่างไขน้ำ (`draining=True`) แล้ว replay ข้อมูลชุดเดิม: การกระโดดสูงสุดเหลือ 12 พิกเซล ไม่มีการกระโดด > 20 พิกเซลอีก
-(ครอบด้วยเทสต์ S1–S6 ใน `tests/test_tracking.py`) — **ยังต้องอัดไขน้ำสดอีกรอบเพื่อยืนยันเกตนี้อย่างเป็นทางการ***
-
-**ความแม่นของปริมาตร (เกตเฟส 2).**
-RMSE ของการทำนายปริมาตรจากตำแหน่งที่ไม่ทราบล่วงหน้า เทียบกับกระบอกตวง ต้องต่ำกว่า **2 มิลลิลิตร**
-สำหรับบีกเกอร์เส้นผ่านศูนย์กลางภายในราว 5 ซม. ความสูง 1 มม. คิดเป็นปริมาตรราว 2 มล. เกณฑ์นี้จึงเทียบเท่ากับ
-การอ่านตำแหน่งรอยต่อให้คลาดไม่เกิน ~1 มม. ซึ่งใกล้ขีดจำกัดความละเอียดของพิกเซล และแน่นพอที่ชั้นที่เก็บไว้จะไม่ปนเปื้อนจนสังเกตได้
-
-**การทำซ้ำ (เกตเฟส 5).**
-รันครบวงจร 10 รอบด้วยน้ำ+น้ำมันที่ปริมาตรตั้งต้นเท่ากัน รายงาน RMSE และค่าคลาดเคลื่อนสูงสุด
-เกณฑ์: RMSE < 2 มล. และไม่มีรอบใดคลาดเกิน 5 มล. — รอบที่คลาดมากหนึ่งรอบถือว่าไม่ผ่าน เพราะแปลว่าตรรกะการหยุดยังไม่ทนทาน
-
-**การใช้กับไซโคลเฮกเซน (เกตเฟส 6).**
-RMSE จาก 10 รอบด้วยน้ำ–ไซโคลเฮกเซนต้องไม่แย่กว่าผลน้ำ+น้ำมันเกิน 50%
-ยอมรับล่วงหน้าว่าความต่างของดัชนีหักเหระหว่างน้ำกับไซโคลเฮกเซนน้อยกว่าคู่น้ำ–น้ำมัน สัญญาณจึงอ่อนกว่า
-และอาจต้องเปลี่ยนวิธีรับสัญญาณ (ดู §5)
-
-**ข้อกำหนดที่ไม่ใช่หน้าที่.**
-ระบบทั้งหมดรันบน Raspberry Pi 5 บอร์ดเดียว (Python 3, OpenCV, picamera2, Flask); vision loop ≥ 25 fps ที่ 1280×720
-(ปัจจุบัน ~39 fps); เวลาตั้งแต่รอยต่อถึงเป้าหมายจนปั๊มหยุด < 300 มิลลิวินาที; ทุกสคริปต์รันทดสอบกับข้อมูลสังเคราะห์ได้โดยไม่ต้องมีกล้อง;
-ข้อมูลดิบทุกรอบเก็บใน `records/`
+- **No machine learning** — the whole project is a test of whether classical techniques are enough; adding a
+  model back in would make the research question meaningless.
+- **One calibration per setup** — the pixel↔millimeter and volume lookup tables are inherently tied to the
+  camera's position and the vessel; if either moves, the calibrated values no longer apply, so the system
+  assumes everything stays fixed for the duration of an experiment.
+- **One vessel, two layers** — does not support more than two liquid phases or a persistent emulsion.
+- **An experimenter present at all times** — the system is not meant to run unattended, especially once
+  cyclohexane (flammable, volatile) is in use.
+- **No custom circuit/board design** — uses an off-the-shelf relay module and a separate 12V supply.
+- **Configured through files/env vars** — no full settings GUI; the user is the researcher, who has code access.
 
 ---
 
-## 5. สมมติฐานหลักและความเสี่ยงที่อาจทำให้โครงการไม่สำเร็จ
+## 4. Success Metrics
 
-**สมมติฐานที่รับน้ำหนัก:** กล้อง–ภาชนะ–ไฟยึดนิ่ง; มีพื้นหลังทึบสม่ำเสมอหลังภาชนะและไม่มีแสงจ้าส่องเข้ากล้องโดยตรง;
-วัดตำแหน่งเฉพาะเมื่อชั้นแยกตัวนิ่งแล้ว ไม่ใช่ตอนยังเป็นอิมัลชัน
+Each phase in the work plan has a "gate" that must be passed before moving on. The numbers below are starting
+targets with their reasoning, to be reconfirmed after phases 1–2 are done.
 
-**ความเสี่ยงที่ 1 — อัตราส่วนสัญญาณต่อสิ่งรบกวนของตัวตรวจจับ classical.**
-วัดจริงในการทดสอบพบว่า ขอบของฮาร์ดแวร์และเส้นบนโต๊ะให้ค่า gradient ประมาณ 11–21 ขณะที่รอยต่อน้ำ–น้ำมันจริงให้ค่าน้อยกว่า 1
-เมื่อหด ROI ให้แคบและใช้พื้นหลังดำสม่ำเสมอ ตัวตรวจจับเกาะรอยต่อได้ (`conf` ~12) แต่ยังไม่ทราบว่าจะเกาะได้เท่ากันหรือไม่
-สำหรับน้ำ–ไซโคลเฮกเซนที่ดัชนีหักเหใกล้กันกว่า
-*แนวทางสำรองถ้าวิธีความสว่างไม่พอ:* วางฉากหลังลายทางแล้วอ่านการเลื่อนของลายเทียบเฟรมอ้างอิง (background-oriented schlieren);
-ใช้สัญญาณการเคลื่อนที่จากการหักลบเฟรมระหว่างที่ของไหลกำลังไหล; หรือใส่ขั้ววัดความนำไฟฟ้าสองเส้นในท่อทางออก
-(น้ำนำไฟฟ้า ไซโคลเฮกเซนไม่นำ) เป็นตัวสั่งหยุดปั๊มจริง
+**Tracking the interface (Phase 1 gate).**
+The filtered value `boundary_y_smooth` must move in one direction (down) throughout a drain, and must not jump
+more than ~30 pixels between two consecutive frames. The 30-pixel threshold comes from its effect on the
+decision: at the current framing, 30 pixels is on the order of a few millimeters of height. If a 100+ pixel jump
+from a false lock were allowed through and the pump-stop logic acted on it, the system would over- or
+under-drain by roughly 10 mL. The interface must also be detected (`conf` above threshold) in at least 95% of
+frames.
+*Result of the 4 Sep drain test (219 seconds): the trend was correct — the filtered value moved down 104 pixels
+as water was drained, and the interface was detected in 100% of frames. But the filter (the version in use at
+the time) spiked as much as 151 pixels from a false re-seed when `conf` dropped. `tracking.Tracker` was changed
+to never re-seed during a drain (`draining=True`), and replaying the same recording brought the worst jump down
+to 12 pixels, with no jump over 20 pixels remaining (covered by tests S1–S6 in `tests/test_tracking.py`) —
+**a fresh live drain is still needed to confirm this gate formally.***
 
-**ความเสี่ยงที่ 2 — บอร์ดเดียวทำทั้งการมองเห็นและการควบคุม.**
-ยังไม่ได้ทดสอบว่าภาระของ vision loop ทำให้จังหวะสั่งปั๊มคลาด (timing jitter) หรือไม่ ถ้าคลาดมาก จะย้ายส่วนควบคุมไปรันเป็นโพรเซสแยก
+**Volume accuracy (Phase 2 gate).**
+RMSE of the predicted volume, from a position not known in advance, against a graduated cylinder, must be under
+**2 mL**. For a beaker with an inner diameter of roughly 5 cm, 1 mm of height is about 2 mL, so this target is
+equivalent to reading the interface position to within ~1 mm — close to the pixel resolution limit, and tight
+enough that the retained layer won't be visibly contaminated.
 
-**ความเสี่ยงที่ 3 — ความเปราะของกล้องและสายสัญญาณ.**
-ในการทดลองที่ผ่านมา การเชื่อมต่อ CSI ของกล้องขาดหายเป็นช่วง ๆ จากการจับและขยับกล้องบ่อยครั้ง (frontend timeout)
-ก่อนเก็บข้อมูลเชิงปริมาณ กล้องและสายริบบอนต้องถูกยึดแน่นและมี strain relief ระดับซอฟต์แวร์มี watchdog
-ที่รีสตาร์ตการจับภาพที่ค้างให้แล้ว แต่แก้ที่ปลายเหตุเท่านั้น
+**Repeatability (Phase 5 gate).**
+Run the full loop 10 times with water + oil at the same starting volume, report RMSE and the worst single error.
+Target: RMSE < 2 mL and no single run off by more than 5 mL — one badly-off run counts as a failure, because it
+means the stop logic isn't robust.
 
-**เรื่องปั๊มและไฟ.** ปั๊ม (MINTLLAB DP-DIY, 12 V, ~0.42 A) ยังไม่ได้ต่อ ต้องต่อผ่านแหล่งจ่าย 12 V แยกและ relay
-ห้ามผ่านขา GPIO/5V/GND ของ Pi (เคยต่อผิดมาแล้วครั้งหนึ่ง) ปัจจุบัน `vcgencmd get_throttled` อ่านค่า 0x0 แสดงว่าบอร์ดยังปกติ
+**Using cyclohexane (Phase 6 gate).**
+RMSE over 10 runs with water–cyclohexane must not be more than 50% worse than the water/oil result. It is
+accepted up front that the refractive-index difference between water and cyclohexane is smaller than between
+water and oil, so the signal will be weaker and the sensing approach may need to change (see §5).
+
+**Non-functional requirements.**
+The whole system runs on a single Raspberry Pi 5 (Python 3, OpenCV, picamera2, Flask); the vision loop runs at
+>= 25 fps at 1280x720 (currently ~39 fps); the time from the interface reaching its target to the pump stopping
+is < 300 ms; every script can be tested against synthetic data without a camera; raw data from every run is kept
+under `records/`.
 
 ---
 
-## 6. สถานะปัจจุบันและงานที่เหลือ
+## 5. Key Assumptions and Risks That Could Sink the Project
 
-โมดูลการมองเห็น การเฝ้าความขุ่น และการแปลงปริมาตร เขียนเสร็จและผ่านการทดสอบกับข้อมูลสังเคราะห์แล้ว
-หน้าเว็บมีภาพสด การบันทึกผลลง CSV และตัวกำกับที่กู้กล้องค้างได้เอง การทดสอบไขน้ำจริงครั้งแรกบันทึกและวิเคราะห์แล้ว
+**Load-bearing assumptions:** the camera, vessel, and lighting stay fixed; there is a uniform, opaque background
+behind the vessel and no bright light shining directly into the camera; position is only measured once the
+layers have settled, not while they are still an emulsion.
 
-**งานที่เหลือตามลำดับ:** หด ROI และปรับตัวกรองตามเวลาให้ค่ากรองเสถียรพอสั่งปั๊ม (ไม่ให้เฟรมที่ `conf` ต่ำมากลาก tracker
-และบังคับทิศทางเดียวระหว่างบันทึกการไขน้ำ) → วัดบีกเกอร์และ calibrate ความสูง–ปริมาตรด้วยน้ำจริง →
-ต่อปั๊มผ่าน 12 V + relay อย่างปลอดภัย → เชื่อมการตรวจจับเข้ากับการควบคุมปั๊มเป็นวงปิด →
-ทดสอบซ้ำ 10 รอบเก็บ RMSE → เปลี่ยนไปใช้น้ำ–ไซโคลเฮกเซนจริง → เขียนรายงาน
+**Risk 1 — the classical detector's signal-to-clutter ratio.**
+Measurements show hardware edges and lines on the bench produce a gradient around 11–21, while the real
+water/oil interface produces less than 1. With a narrow ROI and a uniform dark background, the detector does
+lock the interface (`conf` ~12), but it is unknown whether it will lock equally well for water–cyclohexane,
+whose refractive indices are closer together. This risk is no longer hypothetical: a test against a real
+separatory funnel (not the beaker) showed the detector lock onto a metal stopcock instead of the real interface
+— confirmed by measuring the gradient directly (stopcock |grad| ~13, the real interface did not register as a
+peak at all). Reading Chem-SDI again with this in mind: their row-gradient step is always run *after* an ML
+segmentation mask removes clutter — a step this project deliberately does not have.
+*Fallback approaches if brightness alone isn't enough:* a striped backdrop, reading the pattern's displacement
+against a reference frame (background-oriented schlieren); a motion cue from frame differencing while the liquid
+is actually flowing (the interface is the only thing moving during a drain, regardless of color); or two
+conductivity electrodes in the outflow tube (water conducts, cyclohexane doesn't) as the actual pump-stop
+trigger, with vision used only for coarse guidance.
+
+**Risk 2 — one board doing both vision and control.**
+Untested so far: whether the vision loop's load causes timing jitter when triggering the pump. If it's
+significant, control moves to a separate process.
+
+**Risk 3 — the camera and its cable are fragile.**
+In earlier testing, the camera's CSI connection dropped intermittently from frequent handling (a frontend
+timeout). Before collecting quantitative data, the camera and its ribbon cable need to be rigidly mounted with
+strain relief; a software watchdog already restarts a stalled capture, but that only treats the symptom.
+
+**The pump and its wiring.** The pump (MINTLLAB DP-DIY, 12V, ~0.42A) is not wired yet; it must go through a
+separate 12V supply and a relay, never through the Pi's GPIO/5V/GND pins (this has been done incorrectly once
+already). `vcgencmd get_throttled` currently reads `0x0`, so the board appears healthy.
 
 ---
 
-## อ้างอิง
+## 6. Current Status and Remaining Work
 
-Fu, X. et al. “Chem-SDI: Segmentation, detection, and inference model for AI robotic chemists in
-automated liquid-liquid extraction workflow.” *Microchemical Journal* 227 (2026): 118844.
+Vision, turbidity-monitoring, and volume-conversion modules are written and pass against synthetic data. The
+web page has a live view, CSV recording, and a watchdog that recovers a stalled camera on its own. The first
+real drain test was recorded and analyzed; the `Tracker`'s false-re-seed bug found in that test has since been
+fixed and validated by replaying the same recording (see §4). A separate real-funnel test then surfaced the
+stopcock-lock finding in risk 1 above.
+
+**Remaining work, in order:** narrow the ROI further to exclude clutter the detector can lock onto instead of
+the interface, or build a motion-differencing detector that ignores color entirely (decision pending — see
+`BACKLOG.md` epic P1) -> re-run a live drain with the current tracker to formally confirm the P1 gate -> measure
+the beaker and calibrate height-to-volume with real water -> wire the pump safely through 12V + a relay -> close
+the loop between detection and pump control -> repeat 10 runs and collect RMSE -> switch to real
+water-cyclohexane -> write the report.
+
+---
+
+## References
+
+Fu, X. et al. "Chem-SDI: Segmentation, detection, and inference model for AI robotic chemists in
+automated liquid-liquid extraction workflow." *Microchemical Journal* 227 (2026): 118844.

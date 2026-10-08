@@ -1,98 +1,110 @@
-# extractlab — ระบบแยกน้ำ–ไซโคลเฮกเซนอัตโนมัติ (Water–Cyclohexane LLE)
+# extractlab — Automated Water–Cyclohexane LLE
 
-ตรวจจับตำแหน่งรอยต่อระหว่างของเหลวสองเฟส (ทั้งคู่ใสไม่มีสี) ด้วยกล้อง แล้วสั่งปั๊มแยกของเหลวออกอัตโนมัติ
-ใช้เทคนิค **classical computer vision** ล้วน ไม่ต้องฝึกโมเดล
+Detects the interface between two liquid phases (both colorless) with a camera, then drives a pump to separate
+them automatically. Uses **classical computer vision only** — no model training.
 
-แนวคิดดัดแปลงจากงานวิจัย **Chem-SDI** (Fu et al., *Microchemical Journal* 227, 2026) โดยตัดส่วน deep learning
-และฮาร์ดแวร์เฉพาะออก เหลือเฉพาะ DCT turbidity monitoring และ row-wise gradient boundary detection
+Adapted from **Chem-SDI** (Fu et al., *Microchemical Journal* 227, 2026), with the deep-learning and bespoke-
+hardware parts removed, keeping DCT turbidity monitoring and row-wise gradient boundary detection.
+
+Full requirements and reasoning: [`PRD.md`](PRD.md) · working context for development: [`CLAUDE.md`](CLAUDE.md) ·
+Agile backlog: [`BACKLOG.md`](BACKLOG.md) · development process (Agile/SDD/TDD): [`PROCESS.md`](PROCESS.md) ·
+research-plan flow diagram (separate artifact).
 
 ---
 
-## สถานะโดยย่อ
+## Status at a glance
 
-| ทำแล้ว | กำลังทำ | ยังไม่ได้ทำ |
+| Done | In progress | Not started |
 |---|---|---|
-| SSH เข้า Pi, ตั้งกล้อง manual exposure/WB | ทดสอบ boundary detection กับรูปน้ำ–น้ำมันจริง | calibrate ความสูง→ปริมาตรด้วยน้ำจริง |
-| เขียน algorithm หลัก 3 ตัว (`boundary_detection`, `turbidity_dct`, `volume_model`) + `synthetic_data` + `demo` ผ่าน synthetic | | ต่อปั๊มผ่าน 12V + relay อย่างปลอดภัย |
-| เขียน `realtime_stream.py` (live MJPEG + แผงสถานะ) | | เชื่อม vision + control ทดสอบครบวงจร, เก็บ RMSE 10 รอบ |
+| Core algorithms: `boundary_detection`, `turbidity_dct`, `volume_model`, `synthetic_data`, `demo` (`RESULT: PASS`) | Deciding how to handle the detector locking onto clutter instead of the interface in less-constrained scenes | Calibrating height -> volume with real measurements |
+| `tracking.py` — temporal filter, unit-tested (`tests/`), validated by replaying a real drain recording | Re-running a live drain to formally confirm the P1 gate | Wiring the pump safely (12V + relay) |
+| `realtime_stream.py` — live view, status panel, in-browser recording, CSV browser, self-healing watchdog | | Closed-loop control, a 10-run RMSE study, switching to real cyclohexane, the final report |
 
-> ทุกโมดูลทดสอบกับ synthetic data ผ่านแล้ว แต่ **ยังไม่เคยทดสอบกับของเหลวจริงจนสำเร็จ**
+The detector reliably locks the real water/oil interface in a tightly-cropped, dark-background setup
+(`conf` ~12 vs. a threshold of 3). It has **not yet** been confirmed live with the current tracker fix, and it
+is known to lock onto clutter (e.g. a stopcock) instead of the interface in a less-constrained scene — see
+`PRD.md` §5, risk 1, and `BACKLOG.md` epic P1 for the candidate fixes under consideration.
 
 ---
 
-## ฮาร์ดแวร์
+## Hardware
 
-| อุปกรณ์ | สเปก | หมายเหตุ |
+| Component | Spec | Notes |
 |---|---|---|
-| Raspberry Pi 5 | ตัวประมวลผลหลัก บอร์ดเดียว | `ssh somdui@192.168.100.242` |
-| กล้อง | Camera Module 3 (imx708) ผ่าน `picamera2` | ตั้ง manual exposure/AWB แล้ว |
-| กรวยแยก | ทรงลูกแพร์ 125 mL, Ø จุดอ้วนสุด ≈ 6.7 cm | ต้อง calibrate ปริมาตรด้วยน้ำจริง ไม่ใช้สูตรเรขาคณิตล้วน |
-| ปั๊ม | MINTLLAB DP-DIY, 12V, 5W (≈0.42A) | ท่อ intake จมคงที่ก้นขวด (ดูดชั้นล่าง) |
+| Raspberry Pi 5 | Single-board compute, vision + control | `ssh somdui@<pi-ip>` — IP varies by network |
+| Camera | Camera Module 3 (imx708) via `picamera2` | Manual exposure/AWB tuned on site |
+| Vessel | Cylindrical beaker (switched from a pear-shaped separatory funnel) | Separated via a pump intake tube at the bottom, no stopcock |
+| Pump | MINTLLAB DP-DIY, 12V, 5W (~0.42A) | **Not wired yet** |
 
-### ⚠️ ความปลอดภัยเรื่องปั๊ม
+### Pump safety
 
-**ห้ามต่อสายไฟปั๊มเข้าขา GPIO / 5V / GND บนบอร์ด Pi โดยตรงเด็ดขาด** — ปั๊มกิน 12V / 0.42A
-แต่ GPIO จ่ายปลอดภัยไม่เกิน ~16 mA เคยต่อผิดมาแล้วครั้งหนึ่ง (ยังไม่ยืนยันว่า Pi เสียหายไหม —
-เช็ก `vcgencmd get_throttled`)
+**Never wire the pump directly into the Pi's GPIO / 5V / GND pins.** The pump draws 12V/0.42A; GPIO safely
+supplies at most ~16 mA. This has been done by mistake once already (`vcgencmd get_throttled` currently reads
+`0x0` — the board appears unharmed).
 
-**วิธีที่ถูก (ยังไม่ได้ทำ):** แหล่งจ่าย 12V แยก → relay module (5V logic) → ปั๊ม โดย GPIO สั่งแค่เปิด–ปิด relay
+**The correct wiring (not yet built):** an isolated 12V supply -> a relay module (5V logic) -> the pump, with
+GPIO only switching the relay.
 
-### เครือข่าย
+### Network
 
-Pi อยู่ใน WiFi หอพัก (`192.168.100.0/24`) ถ้า SSH หรือเว็บสตรีมเข้าไม่ได้ **ให้ปิด VPN บนคอมก่อน** —
-VPN client บล็อกการเข้าถึงอุปกรณ์ใน LAN เดียวกัน
+The Pi lives on the dorm Wi-Fi. If SSH or the web stream won't connect, **disable any VPN on the viewing
+machine first** — a VPN client blocks access to other devices on the same LAN.
 
 ---
 
-## การติดตั้ง
+## Setup
 
-รันบน Raspberry Pi 5 `picamera2` มาจาก apt ไม่ใช่ pip:
+Runs on a Raspberry Pi 5. `picamera2` and `pytest` come from apt, not pip:
 
 ```bash
-sudo apt install -y python3-picamera2
-python3 -m venv --system-site-packages .venv   # ให้ venv เห็น picamera2
+sudo apt install -y python3-picamera2 python3-pytest
+python3 -m venv --system-site-packages .venv    # so the venv can see picamera2
 source .venv/bin/activate
-pip install -r requirements.txt                 # flask, opencv-python-headless, numpy
+pip install -r requirements.txt                  # flask, opencv-python-headless, numpy
 ```
 
-`boundary_detection.py` ใช้แค่ `cv2` + `numpy` รันบนเครื่องอื่นเพื่อทดสอบ algorithm ได้โดยไม่ต้องมี Pi/กล้อง
+`boundary_detection.py`, `tracking.py`, `turbidity_dct.py`, `volume_model.py`, and `synthetic_data.py` only need
+`numpy`/`opencv` — they run, and can be tested, on any machine, camera or no camera.
 
 ---
 
-## โครงสร้างโค้ด
+## Code layout
 
-| ไฟล์ | หน้าที่ |
+| File | Role |
 |---|---|
-| `boundary_detection.py` | หาตำแหน่งรอยต่อจาก row-wise pixel gradient — รับ numpy/OpenCV array ล้วน ไม่มี camera I/O |
-| `turbidity_dct.py` | `dct_sharpness()` วัดความคมของภาพจากพลังงาน DCT ความถี่สูง + `TurbidityMonitor` ติดตามข้ามเฟรม ตัดสิน warming_up / turbid / clearing / clear (settled) ด้วย sliding-window slope |
-| `volume_model.py` | `FrustumModel` (สูตรกรวย ใช้ได้แค่ช่วงกรวยแคบล่าง) + `CalibrationTable` (interpolate จากคู่ ความสูง–ปริมาตร ที่วัดด้วยน้ำจริง, save/load JSON, มี inverse `height_mm(volume)` ไว้คำนวณจุดสั่งหยุดปั๊ม) |
-| `synthetic_data.py` | สร้างเฟรม/ลำดับการไขออกปลอม (รอยต่อเลื่อนลง + อิมัลชันค่อยๆ ใส) ไว้ทดสอบ pipeline ก่อนมีข้อมูลจริง |
-| `demo.py` | รวม 4 โมดูลข้างบน รันกับ synthetic draining sequence พิมพ์ตารางผลต่อเฟรม + สรุป RMSE (เป็น smoke test ในตัว) |
-| `analyze_real_photo.py` | CLI รัน boundary detection + `dct_sharpness` กับรูปจริง 1 ภาพ (รองรับ `--roi`), เขียนภาพ annotate + `--profile-csv` ไว้ tune threshold, `--calib` เพื่อแปลงเป็นปริมาตร |
-| `realtime_stream.py` | Live MJPEG stream + แผงสถานะบนหน้าเว็บ `http://<pi-ip>:5000` (ต้องมี `picamera2` + กล้อง) |
-| `requirements.txt` | dependencies + วิธีติดตั้ง picamera2 |
+| `boundary_detection.py` | Finds the interface row from a row-wise pixel gradient — pure numpy/OpenCV, no camera I/O |
+| `tracking.py` | `Tracker` — temporal filter for the detected row (median + jump-reject + a `draining` gate); unit-tested |
+| `turbidity_dct.py` | `dct_sharpness()` (image sharpness from high-frequency DCT energy) + `TurbidityMonitor`, which tracks warming_up / turbid / clearing / clear across frames with a sliding-window slope |
+| `volume_model.py` | `FrustumModel` (placeholder geometry) + `CalibrationTable` (interpolated from real height-volume measurements, JSON save/load, with the inverse `height_mm(volume)` used to compute the pump's stop point) |
+| `synthetic_data.py` | Generates fake frames/draining sequences (a descending interface, an emulsion slowly clearing) to test the pipeline before real data exists |
+| `demo.py` | Wires the four modules above together, runs them on a synthetic draining sequence, prints a per-frame table and an RMSE summary — doubles as a smoke test |
+| `analyze_real_photo.py` | CLI that runs boundary detection + `dct_sharpness` on one real photo (`--roi`), writes an annotated image + `--profile-csv` for threshold tuning, and `--calib` to convert to volume |
+| `realtime_stream.py` | Live MJPEG stream + status panel at `http://<pi-ip>:5000` (needs `picamera2` + a camera); in-browser recording to `records/`; a watchdog that recovers from a stalled camera |
+| `run_stream.sh` | Supervisor that relaunches `realtime_stream.py` whenever it exits |
+| `track_log.py` | Polls `/status` from another machine and writes a CSV |
+| `tests/` | `pytest` suite — `test_tracking.py` (temporal-filter spec, clauses S1-S6) and `test_volume_model.py` |
+| `records/` | CSV output from drain-test runs, one row per frame |
+| `requirements.txt` | Dependencies and the picamera2 install note |
 
-รันสคริปต์ตรงๆ ได้ทุกไฟล์ (`python3 demo.py`, `python3 turbidity_dct.py`, ฯลฯ) เป็นการทดสอบกับ synthetic data
-ทุกโมดูล **ผ่าน synthetic แล้ว** แต่ **ยังไม่เคยทดสอบกับของเหลวจริงจนสำเร็จ**
+Every script runs stand-alone (`python3 demo.py`, `python3 turbidity_dct.py`, ...) for a synthetic-data
+self-check, and `python3 -m pytest -q` runs the full unit suite. See `CLAUDE.md` for the full architecture and
+the list of known gotchas, and `PROCESS.md` for how new work gets specified and tested before it's built.
 
 ---
 
-## การใช้งาน
+## Usage
 
-### Live stream บน Pi
+### Live stream on the Pi
 
 ```bash
-python3 realtime_stream.py
-# เปิดเบราว์เซอร์ไปที่ http://<pi-ip>:5000
+./run_stream.sh                 # or: nohup ./run_stream.sh > run_stream.log 2>&1 &
+# open http://<pi-ip>:5000
 ```
 
-ต้องปรับค่าใน `realtime_stream.py` ให้ตรงกับกล้องจริงก่อน:
+Camera/ROI/threshold tuning is done through environment variables, not by editing the file — see `CLAUDE.md`
+"Running things".
 
-- `ROI = (x, y, w, h)` — crop box ครอบเฉพาะคอลัมน์ของเหลว มี margin บน/ล่างรอยต่อ **(ตอนนี้เป็น placeholder)**
-- `ExposureTime` — ปรับตามแสงจริง
-- `CONFIDENCE_THRESHOLD` — ต่ำกว่านี้ถือว่า "ไม่พบรอยต่อ" ต้อง tune จากฟุตเทจจริง
-
-### เรียก detector ในโค้ด
+### Calling the detector from code
 
 ```python
 import cv2
@@ -100,28 +112,34 @@ from boundary_detection import detect_boundary
 
 frame = cv2.imread("vial.jpg")                       # BGR
 boundary_y, confidence = detect_boundary(frame, roi=(560, 80, 160, 560))
-# boundary_y = พิกัดพิกเซลแนวตั้งในเฟรมเต็ม, confidence = |gradient| ที่แถวนั้น
+# boundary_y = vertical pixel coordinate in the full frame, confidence = |gradient| at that row
 ```
 
-### ทดสอบ pipeline กับ synthetic + วิเคราะห์รูปจริง
+### Testing the pipeline and analyzing a real photo
 
 ```bash
-python3 demo.py                                      # dry run ครบ pipeline, ต้องขึ้น RESULT: PASS
+python3 -m pytest -q                                  # unit tests
+python3 demo.py                                       # full synthetic dry run, must print RESULT: PASS
 python3 analyze_real_photo.py photo.jpg --roi 610 235 110 150 --profile-csv prof.csv
 ```
 
 ---
 
-## ความเสี่ยงที่ทราบอยู่แล้ว
+## Known risks
 
-1. **สัญญาณอาจอ่อนเกินไป** — ไม่ใช้สารเรืองแสง ต้องพิสูจน์ว่า row-wise gradient จับรอยต่อของเหลวใสสองชนิดได้จริง
-2. **Pi 5 บอร์ดเดียวทำทั้ง vision + control** — ยังไม่ทดสอบ timing jitter ตอนควบคุมปั๊มแบบ real-time
-3. **ตาราง calibration ผูกกับกรวยใบที่วัดเท่านั้น** — เปลี่ยนกรวยต้อง calibrate ใหม่
-4. **ปั๊มยังไม่ได้ต่อไฟอย่างถูกต้อง** — ดูหัวข้อความปลอดภัยด้านบน
+See `PRD.md` §5 for the full, reasoned risk list. In short:
+
+1. **The classical detector's signal-to-clutter ratio** — it locks onto whichever edge in the ROI has the
+   strongest gradient, not "the interface" specifically; confirmed to lock onto a stopcock instead of a real
+   water/oil interface in a less-constrained scene.
+2. **A single Pi 5 does both vision and control** — timing jitter during pump control is untested.
+3. **The calibration table is tied to the exact vessel and camera position measured** — it breaks if either
+   moves.
+4. **The pump is not wired yet** — see the safety section above.
 
 ---
 
-## เอกสารอ้างอิง
+## References
 
 Fu, X. et al. "Chem-SDI: Segmentation, detection, and inference model for AI robotic chemists in
 automated liquid-liquid extraction workflow." *Microchemical Journal* 227 (2026): 118844.

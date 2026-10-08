@@ -2,135 +2,161 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-ระบบแยกชั้นน้ำ–ไซโคลเฮกเซนอัตโนมัติ: ใช้กล้อง + classical computer vision ตรวจจับตำแหน่งรอยต่อ
-ระหว่างของเหลวสองเฟส (ทั้งคู่ใสไม่มีสี) แล้วสั่งปั๊มดูดชั้นล่างออกจนถึงจุดที่ต้องการ รันบน Raspberry Pi 5 บอร์ดเดียว
-ดัดแปลงจาก Chem-SDI (Fu et al., *Microchemical Journal* 227, 2026) โดยตัด deep learning และฮาร์ดแวร์เฉพาะออก
+Automated water–cyclohexane liquid-liquid extraction system: a camera plus classical computer vision locates the
+interface between two liquid phases (both colorless), then drives a pump to withdraw the lower layer to a target
+point. Runs entirely on a single Raspberry Pi 5. Adapted from Chem-SDI (Fu et al., *Microchemical Journal* 227,
+2026), with deep learning and bespoke hardware removed.
 
-เอกสารเต็ม: [`PRD.md`](PRD.md) (ข้อกำหนด + เกณฑ์ผ่าน) · [`README.md`](README.md) (โครงสร้างโค้ด) · ผังลำดับงาน (artifact บน claude.ai)
+Full documentation: [`PRD.md`](PRD.md) (requirements + pass/fail gates) · [`README.md`](README.md) (code layout) ·
+[`BACKLOG.md`](BACKLOG.md) (Agile backlog by phase) · [`PROCESS.md`](PROCESS.md) (development workflow: Agile,
+Spec-Driven Development, Test-Driven Development) · research-plan flow diagram (separate artifact).
 
 ---
 
-## ฮาร์ดแวร์
+## Hardware
 
-| อุปกรณ์ | สเปก | หมายเหตุ |
+| Component | Spec | Notes |
 |---|---|---|
-| Raspberry Pi 5 | บอร์ดเดียว ทำทั้ง vision + control | `ssh somdui@<pi-ip>` — IP เปลี่ยนตามเครือข่าย (เคยเป็น 192.168.100.242, 172.20.10.3) |
-| กล้อง | Camera Module 3 (เซนเซอร์ imx708) ผ่าน `picamera2` | ตั้ง manual exposure/AWB (ปิด auto) — ค่าขึ้นกับแสง ณ ที่นั้น |
-| ภาชนะ | **บีกเกอร์ทรงกระบอก** (เปลี่ยนจากกรวยแยกลูกแพร์) | แยกชั้นด้วยท่อ intake ของปั๊มที่จมก้น ไม่มี stopcock · ทรงกระบอก → V = πr²h เป็นเส้นตรง |
-| ปั๊ม | MINTLLAB DP-DIY, 12V, 5W (~0.42A) | **ยังไม่ได้ต่อ** — ต้องผ่าน 12V แยก + relay |
+| Raspberry Pi 5 | Single board, does both vision and control | `ssh somdui@<pi-ip>` — IP changes with network (has been 192.168.100.242, 172.20.10.3) |
+| Camera | Camera Module 3 (imx708 sensor) via `picamera2` | Manual exposure/AWB (auto disabled) — values are specific to the lighting on site |
+| Vessel | **Cylindrical beaker** (switched from a pear-shaped separatory funnel) | Phases are separated via a pump intake tube resting at the bottom — no stopcock · a cylinder makes V = πr²h linear |
+| Pump | MINTLLAB DP-DIY, 12V, 5W (~0.42A) | **Not wired yet** — must go through an isolated 12V supply + relay |
 
 ---
 
-## รันอะไรยังไง
+## Running things
 
 ```bash
-# บน Pi — สตรีมสด + หน้าเว็บ (http://<pi-ip>:5000)
+# On the Pi — live stream + web page (http://<pi-ip>:5000)
 cd ~/extractlab
-nohup ./run_stream.sh > run_stream.log 2>&1 &     # supervisor: รีสตาร์ทเองถ้ากล้องค้าง
-#   หยุดถาวร: kill <pid ของ run_stream.sh>  หรือ  pkill -f run_stream
+nohup ./run_stream.sh > run_stream.log 2>&1 &     # supervisor: relaunches itself if the camera stalls
+#   to stop for good: kill <pid of run_stream.sh>  or  pkill -f run_stream
 
-# ปรับกล้อง/ROI โดยไม่แก้โค้ด — env var:
+# Tune camera/ROI without touching code — env vars:
 EXPOSURE_US=25000 GAIN=8 WB_RED=2.14 WB_BLUE=1.76 \
 ROI_X=555 ROI_Y=370 ROI_W=175 ROI_H=290 python3 realtime_stream.py
 
-# ทดสอบ
+# Tests
 python3 -m pytest -q                       # unit — tests/test_tracking.py (S1-S6), test_volume_model.py
 python3 -m pytest tests/test_tracking.py   # "run a single test file"
-python3 -m pytest -k s4                     # "run a single test"
-python3 demo.py            # integration smoke test — ต้องขึ้น RESULT: PASS
-python3 turbidity_dct.py   # โมดูลที่ยังไม่มีเทสต์ pytest มี __main__ เป็น self-check
+python3 -m pytest -k s4                    # "run a single test"
+python3 demo.py            # integration smoke test — must print RESULT: PASS
+python3 turbidity_dct.py   # modules without pytest coverage yet have a __main__ self-check
 python3 volume_model.py
 python3 synthetic_data.py
-# ไม่มี lint/build · boundary_detection.py ทดสอบผ่าน demo.py
+# no lint/build step · boundary_detection.py is exercised through demo.py
 
-# วิเคราะห์รูปจริง 1 ภาพ
+# Analyze one real photo
 python3 analyze_real_photo.py photo.jpg --roi X Y W H --profile-csv prof.csv
 
-# บันทึกผลระหว่างไขน้ำ: กดปุ่ม ⏺/⏹ บนหน้าเว็บ → records/rec_*.csv
-#   หรือจากเครื่องอื่น: python3 track_log.py drain.csv
+# Record a run while draining: click the record button on the web page -> records/rec_*.csv
+#   or from another machine: python3 track_log.py drain.csv
 ```
 
-`picamera2` มาจาก apt ไม่ใช่ pip: `sudo apt install -y python3-picamera2` · venv ต้องใช้ `--system-site-packages`
+`picamera2` comes from apt, not pip: `sudo apt install -y python3-picamera2` · a venv needs `--system-site-packages`
 
 ---
 
-## โครงสร้างไฟล์
+## File layout
 
-| ไฟล์ | หน้าที่ |
+| File | Role |
 |---|---|
-| `boundary_detection.py` | หา `boundary_y` + `conf` จาก row-wise intensity gradient — numpy/OpenCV array ล้วน ไม่มี camera I/O |
-| `tracking.py` | `Tracker` — กรอง `boundary_y` ตามเวลา (median + jump-reject + `draining` gate) · hardware-free · เจ้าของ `CONFIDENCE_THRESHOLD` + `TRACK_*` · มี pytest |
-| `turbidity_dct.py` | `dct_sharpness()` + `TurbidityMonitor` — ตัดสิน warming_up / turbid / clearing / clear |
-| `volume_model.py` | `FrustumModel` + `CalibrationTable` (interpolate / JSON / inverse) — geometry ยังเป็น placeholder |
-| `synthetic_data.py` | สร้างเฟรม/ลำดับการไขน้ำปลอมไว้ทดสอบก่อนมีข้อมูลจริง |
-| `demo.py` | รวม 4 โมดูลข้างบน รันกับ synthetic + assertion (smoke test) |
-| `analyze_real_photo.py` | CLI: boundary + sharpness กับรูป 1 ภาพ, `--roi`, `--calib`, `--profile-csv` |
-| `realtime_stream.py` | สตรีม MJPEG + แผงสถานะ + endpoint `/status` `/records` `/record/start|stop` · `_Tracker` กรอง `boundary_y_smooth` · watchdog กันกล้องค้าง |
-| `run_stream.sh` | supervisor: relaunch `realtime_stream.py` ทุกครั้งที่มันปิด (คู่กับ watchdog) |
-| `track_log.py` | poll `/status` → CSV จากเครื่องอื่น |
-| `records/` | CSV ผลการทดสอบไขน้ำ (หนึ่งแถวต่อเฟรม) |
+| `boundary_detection.py` | Finds `boundary_y` + `conf` from a row-wise intensity gradient — pure numpy/OpenCV array math, no camera I/O |
+| `tracking.py` | `Tracker` — filters `boundary_y` over time (median + jump-reject + a `draining` gate) · hardware-free · owns `CONFIDENCE_THRESHOLD` + `TRACK_*` · has pytest coverage |
+| `turbidity_dct.py` | `dct_sharpness()` + `TurbidityMonitor` — decides warming_up / turbid / clearing / clear |
+| `volume_model.py` | `FrustumModel` + `CalibrationTable` (interpolate / JSON / inverse) — the geometry is still a placeholder |
+| `synthetic_data.py` | Generates fake frames/draining sequences to test against before real data existed |
+| `demo.py` | Wires the four modules above together, runs them against synthetic data + assertions (smoke test) |
+| `analyze_real_photo.py` | CLI: boundary + sharpness against a single image, `--roi`, `--calib`, `--profile-csv` |
+| `realtime_stream.py` | MJPEG stream + status panel + `/status` `/records` `/record/start|stop` endpoints · `Tracker` filters `boundary_y_smooth` · watchdog against a stalled camera |
+| `run_stream.sh` | Supervisor: relaunches `realtime_stream.py` every time it exits (pairs with the watchdog) |
+| `track_log.py` | Polls `/status` -> CSV from another machine |
+| `records/` | CSV output from drain-test runs (one row per frame) |
 
 ---
 
-## สถาปัตยกรรม — การไหลของข้อมูลตอนรัน
+## Architecture — runtime data flow
 
-โค้ดแบ่งเป็น 2 โลกที่แยกกันชัดเจน:
+The code splits into two clearly separate worlds:
 
-**1. โมดูลวิเคราะห์ที่ไม่ยุ่งกับฮาร์ดแวร์** — `boundary_detection`, `turbidity_dct`, `volume_model`
-เป็นฟังก์ชัน/คลาสบริสุทธิ์ที่รับ numpy array (ไม่มี camera I/O, ไม่ import `picamera2`/`flask`)
-`demo.py` เป็นตัวประกอบทั้งสามเข้าด้วยกัน รันกับเฟรมจาก `synthetic_data.py` — ทดสอบ algorithm ได้เต็มรูปแบบบนเครื่องใดก็ได้
-โซ่การตรวจจับใน `boundary_detection.py`: crop ROI → ค่าเฉลี่ยความสว่างรายแถว → smooth → `np.gradient` →
-`argmax(|grad|)` (เว้น margin ที่ขอบ) → แถวนั้น = รอยต่อ, `|grad|` ณ แถวนั้น = `conf`
+**1. Hardware-free analysis modules** — `boundary_detection`, `turbidity_dct`, `volume_model`.
+Pure functions/classes that take numpy arrays (no camera I/O, no `picamera2`/`flask` imports).
+`demo.py` wires all three together and runs them against frames from `synthetic_data.py` — the algorithm can be
+fully tested on any machine. The detection chain in `boundary_detection.py`: crop the ROI -> per-row mean
+brightness -> smooth -> `np.gradient` -> `argmax(|grad|)` (with an edge margin) -> that row is the interface,
+`|grad|` there is `conf`.
 
-**2. ระบบสด `realtime_stream.py`** (ต้องมี Pi + กล้อง) — โครงเป็น **producer เดียว + Flask threaded หลายผู้บริโภค**:
-- เธรด `_capture_loop` เป็น producer เดียว: `capture_array()` → `detect_boundary(frame, ROI)` →
-  `tracking.Tracker.update(raw, conf, draining=_rec["on"])` → เขียน `_latest_jpeg` + dict `_status` +
-  (ถ้ากำลังบันทึก) หนึ่งแถวใน CSV · **`draining=True` ตอนกำลังบันทึก → Tracker ไม่ re-seed เลย** (ระหว่างไขน้ำ
-  รอยต่อขยับช้า การกระโดดใหญ่ = lock ผิดเสมอ · replay `rec_20260904_115249.csv`: max jump 151 → 12 px)
-- Flask serve อย่างเดียว: `/video_feed` สตรีม `_latest_jpeg`, `/status` คืน `_status` + สถานะการบันทึก,
-  `/records` + `/record/start|stop` จัดการไฟล์ใน `records/`
-- เธรด `_watchdog`: ถ้าไม่มีเฟรมใหม่ 15 วิ → `os._exit(1)` แล้ว `run_stream.sh` (loop ข้างนอก) relaunch ให้ → กู้กล้องค้างได้เอง
-- **การตั้งค่าทั้งหมดเป็นค่าคงที่ระดับโมดูลใน `realtime_stream.py`** ส่วนใหญ่ override ด้วย env var ได้
-  (`ROI_X/Y/W/H`, `EXPOSURE_US`, `GAIN`, `WB_RED/BLUE`) · `CONFIDENCE_THRESHOLD` และพารามิเตอร์ `_Tracker`
-  (`TRACK_*`) เป็นค่าคงที่ — เป็น "ปุ่ม" ที่งานเฟส 1 (ทำให้ค่ากรองเสถียร) กำลังปรับอยู่
+**2. The live system `realtime_stream.py`** (needs a Pi + camera) — shaped as **a single producer thread with
+several Flask-threaded consumers**:
+- The `_capture_loop` thread is the single producer: `capture_array()` -> `detect_boundary(frame, ROI)` ->
+  `tracking.Tracker.update(raw, conf, draining=_rec["on"])` -> writes `_latest_jpeg` + the `_status` dict + (while
+  recording) one CSV row. **`draining=True` while recording -> the Tracker never re-seeds** (during a drain the
+  interface moves slowly, so a large jump always means a false lock · replay of `rec_20260904_115249.csv`: max
+  jump 151 -> 12 px).
+- Flask only serves: `/video_feed` streams `_latest_jpeg`, `/status` returns `_status` plus recording state,
+  `/records` + `/record/start|stop` manage files under `records/`.
+- The `_watchdog` thread: if no new frame for 15s -> `os._exit(1)`, then `run_stream.sh` (the outer loop)
+  relaunches it -> a stalled camera recovers on its own.
+- **All configuration lives as module-level constants in `realtime_stream.py`**; most are overridable by env var
+  (`ROI_X/Y/W/H`, `EXPOSURE_US`, `GAIN`, `WB_RED/BLUE`). `CONFIDENCE_THRESHOLD` and the `Tracker` parameters
+  (`TRACK_*`, in `tracking.py`) are constants — the knobs that Phase 1's work (making the smoothed value stable)
+  is currently tuning.
 
-`_status` dict คือสัญญาระหว่างสองส่วน: capture loop เขียนฝั่งเดียว, `/status` (และ `track_log.py`, หน้าเว็บ) อ่าน
+The `_status` dict is the contract between the two halves: the capture loop is the only writer, `/status` (and
+`track_log.py`, the web page) are readers.
 
 ---
 
-## การตัดสินใจออกแบบ (ต่างจากเปเปอร์)
+## Design decisions (vs. the paper)
 
-| หัวข้อ | เปเปอร์ | ที่เราใช้ | เหตุผล |
+| Topic | Paper | What we use | Why |
 |---|---|---|---|
-| ระบุบริเวณของเหลว | YOLOv8n-seg | crop ROI ด้วยมือ | คำถามวิจัยคือ "classical พอไหม" — ใส่ ML กลับมาทำให้ไร้ความหมาย |
-| ตัวช่วยเห็นรอยต่อ | — | ไม่มี (ลองวิธีตรง) | พิสูจน์ด้วยข้อมูลจริงก่อนว่าสัญญาณพอ |
-| ความสูง → ปริมาตร | frustum | calibrate จริง — บีกเกอร์ทรงกระบอก = เส้นตรง | ทรงกระบอกไม่ต้อง fit หลายจุด |
-| แยกของเหลว | stopcock + สเต็ปเปอร์ | ปั๊มดูดผ่านท่อก้นภาชนะ + relay | ใช้ของที่มี |
-| ตัวประมวลผล | Orange Pi + STM32 | Pi 5 บอร์ดเดียว + GPIO + relay | ลดฮาร์ดแวร์ (เสี่ยง: timing jitter ยังไม่ทดสอบ) |
+| Finding the liquid region | YOLOv8n-seg | Hand-cropped ROI | The research question is "is classical enough?" — bringing ML back in makes it meaningless |
+| Help seeing the interface | — | None (try the direct approach first) | Prove the signal is strong enough with real data before adding anything |
+| Height -> volume | Frustum | Real calibration — a cylindrical beaker is linear | A cylinder needs no multi-point fit |
+| Phase separation | Stopcock + stepper motor | Pump draws through a tube at the vessel bottom + relay | Use what's on hand |
+| Compute | Orange Pi + STM32 | Single Pi 5 + GPIO + relay | Less hardware (risk: timing jitter untested) |
 
-เก็บจากเปเปอร์: DCT turbidity monitoring และ row-wise gradient boundary detection (classical ล้วน)
-
----
-
-## สถานะ (4 ก.ย. 2026)
-
-- **P0 เสร็จ** — โมดูลหลัก + เครื่องมือครบ, git + push GitHub (`Cherrpxp/extractlab`)
-- **P1 กำลังทำ** — ฉากหลังดำ + ROI แคบ → ตัวตรวจจับเกาะรอยต่อน้ำ/น้ำมันจริง (`conf` ~12 เทียบเกณฑ์ 3)
-  ทดสอบไขน้ำครั้งแรก 219 วิ: แนวโน้มถูก (เลื่อนลง 104 px) · ปรับ `Tracker` ไม่ให้ re-seed ระหว่างไขน้ำแล้ว →
-  replay ข้อมูลเดิม: max jump 151 → 12 px, jumps>20px 14 → 0 · **ยังต้องอัดไขน้ำสดอีกรอบเพื่อยืนยันเกต**
-  เหลือ: หด ROI ให้แคบลงอีก · อัดไขน้ำสดใหม่เทียบกราฟ
-- **P2–P7** ยังไม่เริ่ม (calibrate ปริมาตร → ต่อปั๊ม → closed loop → RMSE 10 รอบ → ไซโคลเฮกเซน → รายงาน)
+Kept from the paper: DCT turbidity monitoring and row-wise gradient boundary detection (both purely classical).
 
 ---
 
-## กับดักที่เจอมาแล้ว (อ่านก่อนแก้)
+## Status (as of 4 Sep 2026, confirmed current 8 Oct 2026)
 
-- **`git push` จาก terminal บน Pi ไม่ได้** — ไม่มี credential (`could not read Username`) · push ผ่านปุ่ม Sync ใน VS Code
-- **สาย CSI ของกล้องเปราะ** — จับ/ขยับกล้องบ่อยแล้วขาดหายเป็นช่วง ๆ (`Camera frontend has timed out`) · sensor enumerate ได้แต่ไม่มีเฟรม = สายหรือคอนเนกเตอร์ · ต้องยึดกล้อง + strain relief · watchdog + `run_stream.sh` กู้ระดับซอฟต์แวร์แล้ว
-- **`picamera2` format `"RGB888"` ให้ array มาเป็น BGR อยู่แล้ว** — อย่าเรียก `cvtColor(..., RGB2BGR)` ทับ (เคยทำให้ของเหลืองกลายเป็นฟ้า)
-- **ต้องตั้ง `FrameDurationLimits` กว้าง** ไม่งั้น pipeline บีบ `ExposureTime` เหลือ ~33 ms เงียบ ๆ
-- **ค่ากล้อง (exposure/gain/WB) ผูกกับแสง ณ ที่นั้น** — ย้ายที่/เปลี่ยนไฟ ต้อง recalibrate (รัน AWB+AE auto อ่านค่าแล้ว bake กลับเป็น manual)
-- **calibration (ROI, mm/px, threshold, ตารางปริมาตร) ผูกกับ setup ที่วัด** — กล้อง/ภาชนะขยับเมื่อไหร่ใช้ไม่ได้
-- **ห้ามต่อสายปั๊มเข้าขา GPIO / 5V / GND ของ Pi เด็ดขาด** — 12V/0.42A vs GPIO ~16 mA · เคยต่อผิดมาแล้ว · `vcgencmd get_throttled` ตอนนี้ = 0x0 (บอร์ดปกติ)
-- **VPN บนเครื่องที่เปิดหน้าเว็บ** อาจบล็อกการเข้าถึง Pi ใน LAN เดียวกัน — ปิด VPN ก่อนถ้าเข้าไม่ได้
-- `pkill -f realtime_stream` จาก terminal จะฆ่า shell ตัวเองถ้าคำสั่งเดียวกันมีคำว่า `realtime_stream` อยู่ด้วย — kill ด้วย PID หรือแยกคำสั่ง
+- **P0 done** — core modules + tooling complete, git + pushed to GitHub (`Cherrpxp/extractlab`)
+- **P1 in progress** — black background + tight ROI -> the detector locks onto the real water/oil interface
+  (`conf` ~12 vs. a threshold of 3). First real drain test, 219s: the trend was correct (moved 104 px) · the
+  `Tracker` was fixed to never re-seed during a drain -> replaying the same data: max jump 151 -> 12 px, jumps
+  over 20px: 14 -> 0. **Still need a fresh live drain run to formally confirm the gate.** A second finding since
+  then: tested against a real separatory funnel (not the beaker), the detector locked onto a metal stopcock
+  instead of the real interface — the classical row-gradient detector has no notion of "interface," it just
+  picks the strongest edge in the ROI, and a tight ROI alone is a fragile fix. See `PRD.md` §5, risk 1, and
+  `BACKLOG.md` epic P1 for the two candidate next steps (narrow the ROI further vs. build a motion-differencing
+  detector that ignores color entirely).
+- **P2–P7 not started** (calibrate volume -> wire the pump -> closed loop -> RMSE over 10 runs -> cyclohexane ->
+  report).
+
+---
+
+## Known gotchas (read before touching)
+
+- **`git push` from the Pi's terminal doesn't work** — no credential (`could not read Username`) · push via the
+  Sync button in VS Code instead.
+- **The camera's CSI cable is fragile** — handling/moving the camera a lot causes it to drop out intermittently
+  (`Camera frontend has timed out`) · the sensor enumerates fine but delivers no frames = a cable or connector
+  issue · the camera needs to be mounted rigidly with strain relief · a watchdog + `run_stream.sh` already
+  recover at the software level, which treats the symptom, not the cause.
+- **`picamera2`'s `"RGB888"` format already returns a BGR array** — do not call
+  `cvtColor(..., RGB2BGR)` on top of it (this once turned the yellow organic layer blue).
+- **`FrameDurationLimits` must be set wide**, or the pipeline silently clamps `ExposureTime` to ~33 ms.
+- **Camera settings (exposure/gain/WB) are specific to the lighting where they were tuned** — moving the rig or
+  changing the lights requires recalibrating (run AWB+AE in auto, read the values back, bake them in as manual
+  again).
+- **Calibration (ROI, mm/px, threshold, the volume table) is tied to the exact setup it was measured on** — it
+  breaks the moment the camera or vessel moves.
+- **Never wire the pump into the Pi's GPIO / 5V / GND pins** — 12V/0.42A vs. GPIO's safe ~16 mA · this has
+  happened once already · `vcgencmd get_throttled` currently reads 0x0 (board is healthy).
+- **A VPN on the machine viewing the web page** can block access to the Pi on the same LAN — disable it first if
+  the page won't load.
+- `pkill -f realtime_stream` from the terminal will kill its own shell if that same command line contains the
+  string `realtime_stream` — kill by PID, or run it as a separate command.

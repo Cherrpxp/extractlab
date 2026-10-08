@@ -92,6 +92,17 @@ real data before trusting it.
 
 ---
 
+## Planning before implementation
+
+For work that touches code across multiple files or steps — not pure documentation drafting — Claude Code's
+Plan Mode is used: a plan is written and reviewed before any file is edited, so the goal and approach are
+explicit and agreed on before implementation starts, per the advisor's direct instruction. Documentation
+(`PRD.md`, this file, `BACKLOG.md`, etc.) is still drafted through direct iteration (draft -> feedback -> revise)
+since a spec or a plan document is itself the planning artifact — there is nothing upstream of it to plan against.
+
+First applied to: **P1-07** (deciding between narrowing the ROI further vs. building a motion-differencing
+detector) and **P3** (wiring the pump — the higher-risk, hardware-touching work).
+
 ## How a new piece of work gets built
 
 1. State the behavior as numbered clauses, grounded in either a PRD requirement/gate or an observed failure —

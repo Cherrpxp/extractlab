@@ -39,17 +39,22 @@ tracer or any machine-learning model.
       replaying it against real drain data** (max jump got worse: 151 -> 194 px) — reverted
 - [x] **P1-05** Correct fix found from what the real data showed: never re-seed while draining -> replay of the
       same data: max jump 151 -> 12 px, jumps over 20px: 14 -> 0
-- [x] **P1-06** Tested against a real separatory funnel (not the beaker) and found the detector locks onto a
-      stopcock instead of the interface — confirmed by direct gradient measurement; traced to the detector
-      having no concept of "interface," only "strongest edge in the ROI." Chem-SDI avoids this by running an ML
+- [x] **P1-06** Tested against a real separatory funnel — **equipment since retired in favor of the beaker,
+      not the apparatus in current use** — and found the detector locks onto the funnel's metal stopcock
+      instead of the interface; confirmed by direct gradient measurement; traced to the detector having no
+      concept of "interface," only "strongest edge in the ROI." Chem-SDI avoids this by running an ML
       segmentation mask before its row-gradient step, which this project deliberately does not have.
-- [ ] **P1-07** Decide between: (A) narrow the ROI further to exclude clutter, then re-run a live drain to close
-      this epic with the existing detector, or (B) build a motion-differencing detector (the interface is the
-      only thing moving during a drain, regardless of color) as a color-independent alternative that would also
-      work for cyclohexane
-- [ ] **P1-08** **Re-run a live drain with the current tracker and confirm the P1 gate formally** (replay
-      evidence only so far — see PRD §4)
-- [ ] **P1-09** If (B): spec -> test (red) -> implement motion differencing, validated first against
+- [x] **P1-07** Resolved by the vessel switch, not by new code: the beaker has **no stopcock** (separated via a
+      pump intake tube at the bottom — see `CLAUDE.md` hardware table), and there is no recorded instance of the
+      detector mis-locking on the beaker rig (`conf` ~12 vs. threshold 3, clean). Building a motion-differencing
+      detector now would spec new work against a failure observed on retired hardware, not the apparatus in use
+      — against `PROCESS.md`'s own rule to spec from a real, current failure. Motion differencing stays on
+      record as the documented fallback *if* P6 (cyclohexane) shows the brightness signal is too weak (PRD §5)
+      — deferred, not abandoned.
+- [ ] **P1-08** **Re-run a live drain on the beaker with the current tracker and confirm the P1 gate formally**
+      (replay evidence only so far — see PRD §4) — the one remaining item in this epic
+- [ ] **P1-09** *(deferred to P6)* If cyclohexane's weaker refractive-index contrast makes brightness-gradient
+      detection unreliable: spec -> test (red) -> implement motion differencing, validated first against
       `synthetic_data.py`
 
 Gate: `boundary_y_smooth` moves monotonically during a drain, no jump > 30 px between consecutive frames, the

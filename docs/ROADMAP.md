@@ -29,7 +29,7 @@ Phases grouped into four checkpoints — each one answers a specific question th
 
 | Milestone | Phases | Answers | Done when | Status |
 |---|---|---|---|---|
-| **M1 — Detection proven** | P0, P1 | Can a classical (non-ML) pipeline find and track the interface reliably? | P1 gate closed (`P1-08`) | In progress — P0 done, P1 open items `P1-07`-`P1-09` |
+| **M1 — Detection proven** | P0, P1 | Can a classical (non-ML) pipeline find and track the interface reliably? | P1 gate closed (`P1-08`) | In progress — P0 done, P1's only remaining item is `P1-08` |
 | **M2 — Volume + hardware ready** | P2, P3 | Can height convert to volume, and can the pump be driven safely? | P2 and P3 gates both closed | Not started |
 | **M3 — Closed loop validated** | P4, P5 | Does the whole system work unattended, repeatably? | P5 gate closed (10-run RMSE) | Not started |
 | **M4 — Cyclohexane + report** | P6, P7 | Does it hold up on the real target pair, and is it written up? | P6 gate closed, report submitted | Not started |
@@ -48,7 +48,7 @@ weekly cadence.
 | Sprint 2 | 2026-09-04 | `P0-04`, `P0-05`, `P0-06`, `P1-01`-`P1-06` | Recording + watchdog shipped; `Tracker` extracted and fixed (replay 151 -> 12 px); real-funnel test found the stopcock-lock risk |
 | *(paused)* | 2026-09-05 - 2026-10-07 | — | Away from the project |
 | Sprint 3 | 2026-10-08 | docs translation, `BACKLOG.md`/`PROCESS.md`/`CHANGELOG.md`, architecture + logic diagrams | Full English documentation trail established |
-| **Sprint 4 (current)** | 2026-10-08 - | `P1-07`, `P1-08`, `P1-09` | Deciding ROI-narrowing vs. motion differencing; confirming the P1 gate live |
+| **Sprint 4 (current)** | 2026-10-08 - | `P1-08` | Resolved `P1-07` by re-reading the hardware table (beaker has no stopcock, the finding was funnel-specific, retired equipment) — no new detector needed; the only remaining P1 work is confirming the gate live |
 
 ---
 
@@ -119,10 +119,10 @@ Every backlog item, one row each. Full reasoning for any row lives in `BACKLOG.m
 | P1-03 | P1 | Done | Extracted `Tracker` into `tracking.py`, spec S1-S6, unit-tested |
 | P1-04 | P1 | Done (reverted) | First fix hypothesis invalidated by replay (max jump 151 -> 194 px) |
 | P1-05 | P1 | Done | Correct fix: never re-seed while draining (replay 151 -> 12 px, jumps>20px 14 -> 0) |
-| P1-06 | P1 | Done | Found the detector locks onto a stopcock on a real funnel; root-caused against Chem-SDI |
-| P1-07 | P1 | **Open** | Decide: narrow the ROI further vs. build a motion-differencing detector |
-| P1-08 | P1 | **Open** | Re-run a live drain to confirm the P1 gate formally |
-| P1-09 | P1 | Open | If motion differencing: spec -> test (red) -> implement |
+| P1-06 | P1 | Done | Found the detector locks onto a stopcock on a real funnel — that funnel is since retired for the beaker |
+| P1-07 | P1 | Done | Resolved by the vessel switch: the beaker has no stopcock, no observed failure on it — no new detector needed |
+| P1-08 | P1 | **Open** | Re-run a live drain to confirm the P1 gate formally — the only remaining P1 item |
+| P1-09 | P1 | Deferred to P6 | If cyclohexane's weaker signal needs it: spec -> test (red) -> implement motion differencing |
 | P2-01 | P2 | Done | `CalibrationTable` written + unit-tested |
 | P2-02 | P2 | Open | Measure the beaker's diameter, mm/px scale, zero-volume row |
 | P2-03 | P2 | Open | Fill to 2-3 known volumes, fit a line |
@@ -157,6 +157,9 @@ What's actually being worked on right now, nothing else.
 
 | ID | Story | Status |
 |---|---|---|
-| P1-07 | Decide: narrow the ROI further vs. build a motion-differencing detector | **Next — blocking everything else in P1** |
-| P1-08 | Re-run a live drain to confirm the P1 gate formally | Blocked on P1-07 |
-| P1-09 | If motion differencing is chosen: spec -> test (red) -> implement | Blocked on P1-07 |
+| P1-08 | Re-run a live drain on the beaker to confirm the P1 gate formally | **Next — the only remaining item in epic P1** |
+
+`P1-07` closed itself out during planning: the stopcock-lock finding was specific to the retired separatory
+funnel, and the beaker (the apparatus actually in use) has no stopcock and no recorded failure. No new detector
+code was needed — see `BACKLOG.md` epic P1 for the full reasoning. `P1-09` (motion differencing) is deferred to
+P6, conditional on cyclohexane actually needing it.

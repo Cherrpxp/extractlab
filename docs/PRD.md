@@ -151,8 +151,12 @@ lock the interface (`conf` ~12), but it is unknown whether it will lock equally 
 whose refractive indices are closer together. This risk is no longer hypothetical: a test against a real
 separatory funnel (not the beaker) showed the detector lock onto a metal stopcock instead of the real interface
 — confirmed by measuring the gradient directly (stopcock |grad| ~13, the real interface did not register as a
-peak at all). Reading Chem-SDI again with this in mind: their row-gradient step is always run *after* an ML
-segmentation mask removes clutter — a step this project deliberately does not have.
+peak at all). **That funnel has since been retired in favor of the beaker, which has no stopcock in frame; there
+is no recorded instance of this failure on the apparatus actually in use.** The underlying weakness it exposed —
+the detector has no notion of "interface," only "strongest edge in the ROI" — is kept on record here as a
+forward risk for §6 and for P6 (cyclohexane), not as an active failure on the current rig. Reading Chem-SDI again
+with this in mind: their row-gradient step is always run *after* an ML segmentation mask removes clutter — a
+step this project deliberately does not have.
 *Fallback approaches if brightness alone isn't enough:* a striped backdrop, reading the pattern's displacement
 against a reference frame (background-oriented schlieren); a motion cue from frame differencing while the liquid
 is actually flowing (the interface is the only thing moving during a drain, regardless of color); or two
@@ -182,12 +186,13 @@ real drain test was recorded and analyzed; the `Tracker`'s false-re-seed bug fou
 fixed and validated by replaying the same recording (see §4). A separate real-funnel test then surfaced the
 stopcock-lock finding in risk 1 above.
 
-**Remaining work, in order:** narrow the ROI further to exclude clutter the detector can lock onto instead of
-the interface, or build a motion-differencing detector that ignores color entirely (decision pending — see
-`BACKLOG.md` epic P1) -> re-run a live drain with the current tracker to formally confirm the P1 gate -> measure
-the beaker and calibrate height-to-volume with real water -> wire the pump safely through 12V + a relay -> close
-the loop between detection and pump control -> repeat 10 runs and collect RMSE -> switch to real
-water-cyclohexane -> write the report.
+**Remaining work, in order:** re-run a live drain on the beaker with the current tracker to formally confirm the
+P1 gate (the only remaining P1 item — the stopcock-lock finding above turned out to be specific to the retired
+funnel, not the beaker in current use, so no new detector is needed to close this epic) -> measure the beaker
+and calibrate height-to-volume with real water -> wire the pump safely through 12V + a relay -> close the loop
+between detection and pump control -> repeat 10 runs and collect RMSE -> switch to real water-cyclohexane
+(building the motion-differencing detector from §5 risk 1 only if brightness-gradient detection proves too weak
+there) -> write the report.
 
 ---
 

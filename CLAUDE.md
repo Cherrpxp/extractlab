@@ -7,8 +7,8 @@ interface between two liquid phases (both colorless), then drives a pump to with
 point. Runs entirely on a single Raspberry Pi 5. Adapted from Chem-SDI (Fu et al., *Microchemical Journal* 227,
 2026), with deep learning and bespoke hardware removed.
 
-Full documentation: [`PRD.md`](PRD.md) (requirements + pass/fail gates) · [`README.md`](README.md) (code layout) ·
-[`BACKLOG.md`](BACKLOG.md) (Agile backlog by phase) · [`PROCESS.md`](PROCESS.md) (development workflow: Agile,
+Full documentation: [`PRD.md`](docs/PRD.md) (requirements + pass/fail gates) · [`README.md`](README.md) (code layout) ·
+[`BACKLOG.md`](docs/BACKLOG.md) (Agile backlog by phase) · [`PROCESS.md`](docs/PROCESS.md) (development workflow: Agile,
 Spec-Driven Development, Test-Driven Development) · research-plan flow diagram (separate artifact).
 
 ---

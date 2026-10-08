@@ -2,7 +2,7 @@
 ### Vision-Guided Automated Liquid–Liquid Separation for Water–Cyclohexane
 
 *Last updated 8 October 2026 (translated to English; status synced with the current repository state) ·
-companion docs: [`README.md`](README.md) (code layout), [`CLAUDE.md`](CLAUDE.md) (context and hardware),
+companion docs: [`README.md`](../README.md) (code layout), [`CLAUDE.md`](../CLAUDE.md) (context and hardware),
 [`BACKLOG.md`](BACKLOG.md) (Agile backlog), [`PROCESS.md`](PROCESS.md) (Agile/SDD/TDD workflow), the research-plan
 flow diagram (a separate artifact)*
 

@@ -6,9 +6,28 @@ them automatically. Uses **classical computer vision only** — no model trainin
 Adapted from **Chem-SDI** (Fu et al., *Microchemical Journal* 227, 2026), with the deep-learning and bespoke-
 hardware parts removed, keeping DCT turbidity monitoring and row-wise gradient boundary detection.
 
-Full requirements and reasoning: [`PRD.md`](PRD.md) · working context for development: [`CLAUDE.md`](CLAUDE.md) ·
-Agile backlog: [`BACKLOG.md`](BACKLOG.md) · development process (Agile/SDD/TDD): [`PROCESS.md`](PROCESS.md) ·
+Full requirements and reasoning: [`PRD.md`](docs/PRD.md) · working context for development: [`CLAUDE.md`](CLAUDE.md) ·
+Agile backlog: [`BACKLOG.md`](docs/BACKLOG.md) · development process (Agile/SDD/TDD): [`PROCESS.md`](docs/PROCESS.md) ·
 research-plan flow diagram (separate artifact).
+
+```
+extractlab/
+├── README.md, CLAUDE.md        # repo-root docs (GitHub / Claude Code conventions)
+├── docs/                       # PRD.md, BACKLOG.md, PROCESS.md
+├── boundary_detection.py       # core algorithms — flat, no build step, run directly
+├── tracking.py
+├── turbidity_dct.py
+├── volume_model.py
+├── synthetic_data.py
+├── demo.py                     # integration smoke test
+├── analyze_real_photo.py       # CLI tools
+├── track_log.py
+├── realtime_stream.py          # the live system (needs a Pi + camera)
+├── run_stream.sh               # supervisor for realtime_stream.py
+├── tests/                      # pytest suite
+├── records/                    # CSV output from drain tests
+└── requirements.txt
+```
 
 ---
 

@@ -62,6 +62,50 @@ that remembers anything across frames. See `CLAUDE.md` for the full producer/con
 
 ---
 
+## Project Timeline
+
+The five `crit` milestones are real deadlines from the department syllabus (`2302493/499`, academic year
+2569/2026), not estimates — everything else is a proposed pace. Full detail and the rationale behind the pacing:
+[`ROADMAP.md`](docs/ROADMAP.md).
+
+```mermaid
+gantt
+    title extractlab timeline — anchored to the 2302493/2302499 syllabus
+    dateFormat YYYY-MM-DD
+    axisFormat %b %Y
+
+    section Fixed deadlines (syllabus, not estimates)
+    Safety cert exam, 20% of 2302493        :crit, milestone, dl1, 2026-09-30, 0d
+    Progress report, P ภาคต้น (SP_CH_S4)     :crit, milestone, dl2, 2026-11-27, 0d
+    Full report due, 20% of 2302499         :crit, milestone, dl3, 2027-04-23, 0d
+    Oral + poster exhibition, 30%           :crit, milestone, dl4, 2027-05-13, 0d
+    Final complete report                   :crit, milestone, dl5, 2027-05-18, 0d
+
+    section P1 - detect & track (estimated)
+    P1-07..09 decide + confirm live         :active, p1, 2026-10-08, 24d
+
+    section P2 - calibrate volume (estimated)
+    P2-02..04 measure, fit, verify          :p2, after p1, 21d
+
+    section P3 - wire the pump (estimated)
+    P3-01..06 relay + pump.py               :p3, after p2, 25d
+
+    section P4 - closed loop (estimated)
+    P4-01..05 combine + dry run             :p4, 2027-01-05, 26d
+
+    section P5 - repeatability study (estimated)
+    P5-01..03 10-run RMSE                   :p5, after p4, 26d
+
+    section P6 - cyclohexane (estimated)
+    P6-01..03 re-validate                   :p6, after p5, 26d
+
+    section P7 - write the report (estimated)
+    Draft report                            :p7, 2027-03-01, 2027-04-16
+    Rehearse presentation                   :p7b, 2027-05-01, 12d
+```
+
+---
+
 ## Status at a glance
 
 **Current phase: P1** (detect & track the interface) — see [`CHANGELOG.md`](CHANGELOG.md) for the dated,

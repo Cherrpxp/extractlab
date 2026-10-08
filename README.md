@@ -32,6 +32,35 @@ extractlab/
 
 ---
 
+## How it works
+
+Gray/dashed = not built yet — see `docs/BACKLOG.md` for the phase ID on each pending step.
+
+```mermaid
+flowchart TD
+    A["Camera frame (BGR)"] --> B["Crop ROI"]
+    B --> C["Row-wise mean brightness -> smooth -> np.gradient -> argmax(abs)"]
+    C --> D["boundary_y, conf"]
+    D --> E["Tracker.update()\nmedian + jump-reject + draining gate"]
+    E --> F["boundary_y_smooth"]
+
+    A --> G["dct_sharpness() / TurbidityMonitor"]
+    G --> H["warming_up / turbid / clearing / clear"]
+
+    F -. "P2" .-> I["CalibrationTable: height -> volume (mL)"]
+    H -. "gates start" .-> J
+    I --> J["Pump start/stop decision — P4"]
+    J -. "P3, not wired" .-> K["Relay -> 12V pump"]
+
+    classDef pending fill:#f5f5f5,stroke:#999,stroke-dasharray: 4 4,color:#666
+    class I,J,K pending
+```
+
+`boundary_detection.py` + `turbidity_dct.py` run off the same frame in parallel; `tracking.py` is the only part
+that remembers anything across frames. See `CLAUDE.md` for the full producer/consumer thread diagram around this.
+
+---
+
 ## Status at a glance
 
 **Current phase: P1** (detect & track the interface) — see [`CHANGELOG.md`](CHANGELOG.md) for the dated,

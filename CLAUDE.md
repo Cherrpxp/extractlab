@@ -8,8 +8,9 @@ point. Runs entirely on a single Raspberry Pi 5. Adapted from Chem-SDI (Fu et al
 2026), with deep learning and bespoke hardware removed.
 
 Full documentation: [`PRD.md`](docs/PRD.md) (requirements + pass/fail gates) · [`README.md`](README.md) (code layout) ·
-[`BACKLOG.md`](docs/BACKLOG.md) (Agile backlog by phase, each item with a short ID) · [`ROADMAP.md`](docs/ROADMAP.md)
-(roadmap -> milestones -> sprints -> stories -> sprint backlog, all as tables) · [`PROCESS.md`](docs/PROCESS.md)
+[`BACKLOG.md`](docs/BACKLOG.md) (Agile backlog by phase, each item with a short ID) · [`docs/developments/`](docs/developments/)
+(roadmap -> milestones -> sprints -> stories -> sprint backlog, numbered `0X_*.md`, tables + Mermaid diagrams) ·
+[`PROCESS.md`](docs/PROCESS.md)
 (development workflow: Agile, Spec-Driven Development, Test-Driven Development) · [`CHANGELOG.md`](CHANGELOG.md)
 (dated, verified history) · research-plan flow diagram (separate artifact).
 

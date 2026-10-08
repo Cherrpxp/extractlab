@@ -8,8 +8,9 @@ point. Runs entirely on a single Raspberry Pi 5. Adapted from Chem-SDI (Fu et al
 2026), with deep learning and bespoke hardware removed.
 
 Full documentation: [`PRD.md`](docs/PRD.md) (requirements + pass/fail gates) · [`README.md`](README.md) (code layout) ·
-[`BACKLOG.md`](docs/BACKLOG.md) (Agile backlog by phase) · [`PROCESS.md`](docs/PROCESS.md) (development workflow: Agile,
-Spec-Driven Development, Test-Driven Development) · research-plan flow diagram (separate artifact).
+[`BACKLOG.md`](docs/BACKLOG.md) (Agile backlog by phase, each item with a short ID) · [`PROCESS.md`](docs/PROCESS.md)
+(development workflow: Agile, Spec-Driven Development, Test-Driven Development) · [`CHANGELOG.md`](CHANGELOG.md)
+(dated, verified history) · research-plan flow diagram (separate artifact).
 
 ---
 
@@ -101,6 +102,34 @@ several Flask-threaded consumers**:
   (`ROI_X/Y/W/H`, `EXPOSURE_US`, `GAIN`, `WB_RED/BLUE`). `CONFIDENCE_THRESHOLD` and the `Tracker` parameters
   (`TRACK_*`, in `tracking.py`) are constants — the knobs that Phase 1's work (making the smoothed value stable)
   is currently tuning.
+
+One frame cycle, producer side, matches this prose exactly:
+
+```mermaid
+sequenceDiagram
+    participant Cap as _capture_loop (producer)
+    participant Cam as picamera2
+    participant Det as detect_boundary()
+    participant Trk as Tracker.update()
+    participant St as _status dict
+    participant CSV as records/*.csv
+    participant Web as Flask (video_feed, status, records)
+
+    loop every frame
+        Cap->>Cam: capture_array()
+        Cam-->>Cap: frame (BGR)
+        Cap->>Det: detect_boundary(frame, ROI)
+        Det-->>Cap: boundary_y, conf
+        Cap->>Trk: update(boundary_y, conf, draining=_rec["on"])
+        Trk-->>Cap: boundary_y_smooth
+        Cap->>St: write _latest_jpeg + _status
+        opt recording is on
+            Cap->>CSV: append one row
+        end
+    end
+
+    Web->>St: read (on each request, no writes)
+```
 
 The `_status` dict is the contract between the two halves: the capture loop is the only writer, `/status` (and
 `track_log.py`, the web page) are readers.

@@ -9,6 +9,10 @@ the dated, verified history, `developments/` for the same items rolled up into r
 stories/sprint-backlog tables (numbered `0X_*.md`, with Mermaid diagrams), and `CLAUDE.md` for architecture and
 operational notes.
 
+Numbering note: P6 (switching to cyclohexane) was removed entirely once the advisor confirmed water-oil is the
+final target pair, not a rehearsal for a harder solvent — the gap from P5 to P7 is intentional, not a missing
+file.
+
 ---
 
 ## Epic P0 — System & algorithm setup (DONE)
@@ -40,23 +44,19 @@ tracer or any machine-learning model.
       replaying it against real drain data** (max jump got worse: 151 -> 194 px) — reverted
 - [x] **P1-05** Correct fix found from what the real data showed: never re-seed while draining -> replay of the
       same data: max jump 151 -> 12 px, jumps over 20px: 14 -> 0
-- [x] **P1-06** Tested against a real separatory funnel — **equipment since retired in favor of the beaker,
-      not the apparatus in current use** — and found the detector locks onto the funnel's metal stopcock
-      instead of the interface; confirmed by direct gradient measurement; traced to the detector having no
-      concept of "interface," only "strongest edge in the ROI." Chem-SDI avoids this by running an ML
-      segmentation mask before its row-gradient step, which this project deliberately does not have.
-- [x] **P1-07** Resolved by the vessel switch, not by new code: the beaker has **no stopcock** (separated via a
-      pump intake tube at the bottom — see `CLAUDE.md` hardware table), and there is no recorded instance of the
-      detector mis-locking on the beaker rig (`conf` ~12 vs. threshold 3, clean). Building a motion-differencing
-      detector now would spec new work against a failure observed on retired hardware, not the apparatus in use
-      — against `PROCESS.md`'s own rule to spec from a real, current failure. Motion differencing stays on
-      record as the documented fallback *if* P6 (cyclohexane) shows the brightness signal is too weak (PRD §5)
-      — deferred, not abandoned.
-- [ ] **P1-08** **Re-run a live drain on the beaker with the current tracker and confirm the P1 gate formally**
-      (replay evidence only so far — see PRD §4) — the one remaining item in this epic
-- [ ] **P1-09** *(deferred to P6)* If cyclohexane's weaker refractive-index contrast makes brightness-gradient
-      detection unreliable: spec -> test (red) -> implement motion differencing, validated first against
-      `synthetic_data.py`
+- [x] **P1-06** Tested against the separatory funnel while it still had its **stopcock attached** and found the
+      detector locks onto the metal stopcock instead of the interface; confirmed by direct gradient measurement;
+      traced to the detector having no concept of "interface," only "strongest edge in the ROI." Chem-SDI avoids
+      this by running an ML segmentation mask before its row-gradient step, which this project deliberately does
+      not have.
+- [x] **P1-07** Resolved by removing the stopcock from the funnel, not by new code: the pump now draws from a
+      tube entering through the top instead of through the stopcock, so the object that caused the mis-lock is
+      no longer in frame. There is no recorded instance of the detector mis-locking on the reconfigured rig
+      (`conf` ~12 vs. threshold 3, clean). Building a motion-differencing detector now would spec new work
+      against a failure that's been fixed at the hardware level — against `PROCESS.md`'s own rule to spec from a
+      real, current failure.
+- [ ] **P1-08** **Re-run a live drain on the reconfigured funnel with the current tracker and confirm the P1
+      gate formally** (replay evidence only so far — see PRD §4) — the one remaining item in this epic
 
 Gate: `boundary_y_smooth` moves monotonically during a drain, no jump > 30 px between consecutive frames, the
 interface is found in >= 95% of frames. See PRD §4.
@@ -65,13 +65,14 @@ interface is found in >= 95% of frames. See PRD §4.
 
 ## Epic P2 — Calibrate height -> volume (NOT STARTED)
 
-Goal: convert `boundary_y` into a volume estimate, using the fact that a cylindrical beaker makes
-height <-> volume linear.
+Goal: convert `boundary_y` into a volume estimate. The vessel is a funnel, not a cylinder, so this needs a
+multi-point calibration table rather than a linear fit.
 
 - [x] **P2-01** `volume_model.py` — `CalibrationTable` (interpolate / JSON / inverse) written and unit-tested
-- [ ] **P2-02** Measure the beaker's inner diameter + the mm/px scale (photograph a ruler) + the zero-volume
+- [ ] **P2-02** Measure the funnel's geometry + the mm/px scale (photograph a ruler) + the zero-volume
       reference row
-- [ ] **P2-03** Fill the beaker to 2-3 known volumes, record the pixel row at each, fit a line
+- [ ] **P2-03** Fill the funnel to 3+ known volumes, record the pixel row at each, build the calibration table
+      (not a single linear fit — a frustum is not linear)
 - [ ] **P2-04** Verify against a volume not used for fitting — target RMSE < 2 mL (see PRD §4 for why)
 
 Gate: predicted-volume RMSE < 2 mL against a graduated cylinder.
@@ -80,13 +81,16 @@ Gate: predicted-volume RMSE < 2 mL against a graduated cylinder.
 
 ## Epic P3 — Wire the pump safely (NOT STARTED)
 
-Goal: drive the 12V pump from an isolated supply through a relay, with the Pi's GPIO only switching logic.
+Goal: drive the 24V pump from an isolated supply through the HW-039 (BTS7960) motor driver, with the Pi's GPIO
+only switching logic.
 
 - [ ] **P3-01** Confirm `vcgencmd get_throttled` reads `0x0` before wiring anything (board health check)
-- [ ] **P3-02** Source a 12V >=1A supply + a 5V-logic relay module
-- [ ] **P3-03** Wire 12V -> relay -> pump; GPIO -> relay IN; share ground — **never through Pi GPIO/5V/GND
-      directly**
-- [ ] **P3-04** Test relay switching from GPIO with no liquid in the loop
+- [x] **P3-02** Source a 24V 2A supply (S-50-24) + the HW-039 motor driver — hardware in hand, voltages confirmed
+      matching
+- [ ] **P3-03** Wire 24V -> HW-039 (B+/B-) -> pump (M+/M-); GPIO -> RPWM/R_EN; share ground — **never through Pi
+      GPIO/5V/GND directly**; prefer a separate 5V source for the driver's logic VCC over the Pi's own 5V pin
+- [ ] **P3-04** Confirm the HW-039's RPWM/R_EN pins respond to 3.3V GPIO logic, then test motor driver switching
+      with no liquid in the loop
 - [ ] **P3-05** Measure the pump's flow rate (mL/s) — needed for a time-based volume fallback and for safety
       timeouts
 - [ ] **P3-06** Write `pump.py`: `start()` / `stop()` / `flow_rate` / `run_volume(ml, stop_check)` / `purge()` —
@@ -124,22 +128,9 @@ Gate: RMSE < 2 mL, no single run off by more than 5 mL.
 
 ---
 
-## Epic P6 — Switch to real water-cyclohexane (NOT STARTED)
-
-Goal: validate against the actual target pair.
-
-- [ ] **P6-01** Re-run a shortened P1 — brightness-gradient likely insufficient (near-identical refractive
-      index); fall back to whatever P1 decided (motion differencing / conductivity probe)
-- [ ] **P6-02** Re-run P2 if needed (different meniscus shape/density)
-- [ ] **P6-03** Repeat P5's 10-run study with cyclohexane
-
-Gate: RMSE comparable to the water/oil result (within 50%).
-
----
-
 ## Epic P7 — Write the report (NOT STARTED)
 
-- [ ] **P7-01** Methods, calibration results, RMSE results (water/oil vs. cyclohexane)
+- [ ] **P7-01** Methods, calibration results, RMSE results
 - [ ] **P7-02** Comparison against Chem-SDI — what was cut, what was kept, how the results differ
 - [ ] **P7-03** Limitations (risks 1-4 in PRD §5, including the camera-cable fragility) and future work
 - [ ] **P7-04** Disclose AI-assisted development (this backlog, the PRD, and the SDD/TDD process in

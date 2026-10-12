@@ -9,6 +9,22 @@ real recorded data.
 
 ## [Unreleased]
 
+### Scope and hardware changes (documentation sync)
+
+- **2026-10-13** — Three real-world changes, confirmed by the advisor/hardware in hand, synced across every doc
+  (`README.md`, `CLAUDE.md`, `PRD.md`, `BACKLOG.md`, `docs/developments/*`):
+  - **Solvent pair:** water-cyclohexane -> **water-oil, final** (not a rehearsal for cyclohexane) — the advisor
+    only required a non-toxic organic solvent, not cyclohexane specifically. Epic P6 (switch to cyclohexane)
+    removed entirely from `BACKLOG.md`; the P5-to-P7 numbering gap is intentional.
+  - **Vessel:** cylindrical beaker -> **separatory funnel, 125 mL, stopcock physically removed** — the pump now
+    draws from a tube entering through the top. `P1-07`'s resolution (no new motion-differencing detector
+    needed) still holds, but the reasoning changed: not "switched to a beaker" but "removed the stopcock from
+    the funnel." Volume model reverts to frustum/multi-point calibration (a funnel is not a cylinder).
+  - **Pump + driver:** MINTLLAB 12V via relay -> **GROTHEN G928, 24V, via an HW-039 (BTS7960) motor driver**
+    (PSU: S-50-24, 24V 2A — confirmed matching). `P3-02` done (hardware in hand); the rest of P3 still open.
+  **Verified:** `python3 -m pytest -q` (11 passed), `python3 demo.py` (`RESULT: PASS`) — no code touched, this
+  was a documentation-only correction pass.
+
 ### Phase P1 — Detect and track the interface on real liquids (in progress)
 
 - **2026-10-08** — Translated all documentation to English; added `docs/BACKLOG.md` and `docs/PROCESS.md`; moved

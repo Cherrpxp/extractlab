@@ -10,7 +10,7 @@ weekly cadence.
 | Sprint 2 | 2026-09-04 | `P0-04`, `P0-05`, `P0-06`, `P1-01`-`P1-06` | Recording + watchdog shipped; `Tracker` extracted and fixed (replay 151 -> 12 px); real-funnel test found the stopcock-lock risk |
 | *(paused)* | 2026-09-05 - 2026-10-07 | — | Away from the project |
 | Sprint 3 | 2026-10-08 | docs translation, `BACKLOG.md`/`PROCESS.md`/`CHANGELOG.md`, architecture + logic diagrams | Full English documentation trail established |
-| **Sprint 4 (current)** | 2026-10-08 - | `P1-08` | Resolved `P1-07` in Plan Mode by re-reading the hardware table (beaker has no stopcock, the finding was funnel-specific, retired equipment) — no new detector needed; the only remaining P1 work is confirming the gate live |
+| **Sprint 4 (current)** | 2026-10-08 - | `P1-08` | Resolved `P1-07` in Plan Mode (the stopcock-lock finding was specific to the funnel's old configuration) — no new detector needed; the stopcock was then physically removed from the funnel, and the advisor confirmed cyclohexane is out of scope (water-oil is the final pair); the only remaining P1 work is confirming the gate live |
 
 ```mermaid
 timeline

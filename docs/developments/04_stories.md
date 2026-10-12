@@ -4,10 +4,9 @@ Every backlog item, one row each, condensed from `BACKLOG.md` — full reasoning
 the matching epic.
 
 ```mermaid
-pie title Stories by status (41 total)
-    "Done" : 15
-    "Open" : 25
-    "Deferred" : 1
+pie title Stories by status (37 total)
+    "Done" : 16
+    "Open" : 21
 ```
 
 | ID | Phase | Status | Story |
@@ -24,18 +23,17 @@ pie title Stories by status (41 total)
 | P1-03 | P1 | Done | Extracted `Tracker` into `tracking.py`, spec S1-S6, unit-tested |
 | P1-04 | P1 | Done (reverted) | First fix hypothesis invalidated by replay (max jump 151 -> 194 px) |
 | P1-05 | P1 | Done | Correct fix: never re-seed while draining (replay 151 -> 12 px, jumps>20px 14 -> 0) |
-| P1-06 | P1 | Done | Found the detector locks onto a stopcock on a real funnel — that funnel is since retired for the beaker |
-| P1-07 | P1 | Done | Resolved by the vessel switch: the beaker has no stopcock, no observed failure on it — no new detector needed |
-| P1-08 | P1 | **Open** | Re-run a live drain to confirm the P1 gate formally — the only remaining P1 item |
-| P1-09 | P1 | Deferred to P6 | If cyclohexane's weaker signal needs it: spec -> test (red) -> implement motion differencing |
+| P1-06 | P1 | Done | Found the detector locks onto a stopcock on the funnel while it still had one attached |
+| P1-07 | P1 | Done | Resolved by removing the stopcock from the funnel (pump now enters from the top) — no new detector needed |
+| P1-08 | P1 | **Open** | Re-run a live drain on the reconfigured funnel to confirm the P1 gate formally — the only remaining P1 item |
 | P2-01 | P2 | Done | `CalibrationTable` written + unit-tested |
-| P2-02 | P2 | Open | Measure the beaker's diameter, mm/px scale, zero-volume row |
-| P2-03 | P2 | Open | Fill to 2-3 known volumes, fit a line |
+| P2-02 | P2 | Open | Measure the funnel's geometry, mm/px scale, zero-volume row |
+| P2-03 | P2 | Open | Fill to 3+ known volumes, build a calibration table (not linear) |
 | P2-04 | P2 | Open | Verify against a held-out volume (target RMSE < 2 mL) |
 | P3-01 | P3 | Open | Confirm `vcgencmd get_throttled` reads `0x0` before wiring |
-| P3-02 | P3 | Open | Source a 12V supply + a 5V-logic relay module |
-| P3-03 | P3 | Open | Wire 12V -> relay -> pump (never through Pi GPIO/5V/GND) |
-| P3-04 | P3 | Open | Test relay switching from GPIO with no liquid |
+| P3-02 | P3 | Done | Source a 24V 2A supply (S-50-24) + the HW-039 motor driver — voltages confirmed matching |
+| P3-03 | P3 | Open | Wire 24V -> HW-039 -> pump (never through Pi GPIO/5V/GND) |
+| P3-04 | P3 | Open | Confirm RPWM/R_EN respond to 3.3V GPIO, then test motor driver switching with no liquid |
 | P3-05 | P3 | Open | Measure the pump's flow rate (mL/s) |
 | P3-06 | P3 | Open | Write `pump.py` (`start`/`stop`/`flow_rate`/`run_volume`/`purge`) |
 | P4-01 | P4 | Open | Combine detection -> volume -> pump start/stop |
@@ -46,9 +44,6 @@ pie title Stories by status (41 total)
 | P5-01 | P5 | Open | Run the full loop 10x |
 | P5-02 | P5 | Open | Record actual vs. predicted volume |
 | P5-03 | P5 | Open | Report RMSE, mean error, standard deviation |
-| P6-01 | P6 | Open | Re-run a shortened P1 with cyclohexane |
-| P6-02 | P6 | Open | Re-run P2 if needed |
-| P6-03 | P6 | Open | Repeat the 10-run study with cyclohexane |
 | P7-01 | P7 | Open | Methods + results write-up |
 | P7-02 | P7 | Open | Comparison against Chem-SDI |
 | P7-03 | P7 | Open | Limitations + future work |

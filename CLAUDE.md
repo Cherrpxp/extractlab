@@ -2,10 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Automated water–cyclohexane liquid-liquid extraction system: a camera plus classical computer vision locates the
-interface between two liquid phases (both colorless), then drives a pump to withdraw the lower layer to a target
-point. Runs entirely on a single Raspberry Pi 5. Adapted from Chem-SDI (Fu et al., *Microchemical Journal* 227,
-2026), with deep learning and bespoke hardware removed.
+Automated water–oil liquid-liquid extraction system: a camera plus classical computer vision locates the
+interface between two liquid phases, then drives a pump to withdraw the lower layer to a target point. Water and
+vegetable oil are the target pair — the research question is whether classical CV is enough, not whether the
+solvent is hazardous, so a non-toxic organic solvent satisfies it. Runs entirely on a single Raspberry Pi 5.
+Adapted from Chem-SDI (Fu et al., *Microchemical Journal* 227, 2026), with deep learning and bespoke hardware
+removed.
 
 Full documentation: [`PRD.md`](docs/PRD.md) (requirements + pass/fail gates) · [`README.md`](README.md) (code layout) ·
 [`BACKLOG.md`](docs/BACKLOG.md) (Agile backlog by phase, each item with a short ID) · [`docs/developments/`](docs/developments/)
@@ -22,8 +24,9 @@ Full documentation: [`PRD.md`](docs/PRD.md) (requirements + pass/fail gates) · 
 |---|---|---|
 | Raspberry Pi 5 | Single board, does both vision and control | `ssh somdui@<pi-ip>` — IP changes with network (has been 192.168.100.242, 172.20.10.3) |
 | Camera | Camera Module 3 (imx708 sensor) via `picamera2` | Manual exposure/AWB (auto disabled) — values are specific to the lighting on site |
-| Vessel | **Cylindrical beaker** (switched from a pear-shaped separatory funnel) | Phases are separated via a pump intake tube resting at the bottom — no stopcock · a cylinder makes V = πr²h linear |
-| Pump | MINTLLAB DP-DIY, 12V, 5W (~0.42A) | **Not wired yet** — must go through an isolated 12V supply + relay |
+| Vessel | **Pear-shaped separatory funnel, 125 mL** | Stopcock physically removed · the pump draws from a tube entering through the top, not the bottom · not a cylinder — V = πr²h does not apply, needs multi-point calibration |
+| Pump | GROTHEN G928 peristaltic pump, 24V | Driven via an HW-039 (BTS7960) motor driver, not a relay — **not wired yet** |
+| PSU | S-50-24 switching supply, 24V 2A | Voltage confirmed matching the pump's rating |
 
 ---
 
@@ -144,28 +147,26 @@ The `_status` dict is the contract between the two halves: the capture loop is t
 |---|---|---|---|
 | Finding the liquid region | YOLOv8n-seg | Hand-cropped ROI | The research question is "is classical enough?" — bringing ML back in makes it meaningless |
 | Help seeing the interface | — | None (try the direct approach first) | Prove the signal is strong enough with real data before adding anything |
-| Height -> volume | Frustum | Real calibration — a cylindrical beaker is linear | A cylinder needs no multi-point fit |
-| Phase separation | Stopcock + stepper motor | Pump draws through a tube at the vessel bottom + relay | Use what's on hand |
-| Compute | Orange Pi + STM32 | Single Pi 5 + GPIO + relay | Less hardware (risk: timing jitter untested) |
+| Height -> volume | Frustum | Frustum / multi-point calibration — same as the paper here | The vessel is a funnel, not a cylinder, so no simpler linear fit is available |
+| Phase separation | Stopcock + stepper motor | Stopcock removed; pump draws through a tube entering the top + motor driver | Use what's on hand, no stepper needed |
+| Compute | Orange Pi + STM32 | Single Pi 5 + GPIO + motor driver | Less hardware (risk: timing jitter untested) |
 
 Kept from the paper: DCT turbidity monitoring and row-wise gradient boundary detection (both purely classical).
 
 ---
 
-## Status (as of 4 Sep 2026, confirmed current 8 Oct 2026)
+## Status (as of 13 Oct 2026)
 
 - **P0 done** — core modules + tooling complete, git + pushed to GitHub (`Cherrpxp/extractlab`)
-- **P1 in progress** — black background + tight ROI -> the detector locks onto the real water/oil interface
-  (`conf` ~12 vs. a threshold of 3). First real drain test, 219s: the trend was correct (moved 104 px) · the
-  `Tracker` was fixed to never re-seed during a drain -> replaying the same data: max jump 151 -> 12 px, jumps
-  over 20px: 14 -> 0. **Still need a fresh live drain run to formally confirm the gate.** A second finding since
-  then: tested against a real separatory funnel (not the beaker), the detector locked onto a metal stopcock
-  instead of the real interface — the classical row-gradient detector has no notion of "interface," it just
-  picks the strongest edge in the ROI, and a tight ROI alone is a fragile fix. See `PRD.md` §5, risk 1, and
-  `BACKLOG.md` epic P1 for the two candidate next steps (narrow the ROI further vs. build a motion-differencing
-  detector that ignores color entirely).
-- **P2–P7 not started** (calibrate volume -> wire the pump -> closed loop -> RMSE over 10 runs -> cyclohexane ->
-  report).
+- **P1 nearly done — one item left (`P1-08`)** — black background + tight ROI -> the detector locks onto the
+  real water/oil interface (`conf` ~12 vs. a threshold of 3). First real drain test, 219s: the trend was correct
+  (moved 104 px) · the `Tracker` was fixed to never re-seed during a drain -> replaying the same data: max jump
+  151 -> 12 px, jumps over 20px: 14 -> 0. A separate finding — the detector locking onto a metal stopcock instead
+  of the real interface — turned out to be specific to the funnel's old configuration; the stopcock has since
+  been physically removed (the pump now draws from a tube entering through the top), so that failure mode no
+  longer applies. **Still need a fresh live drain run on the reconfigured funnel to formally confirm the gate.**
+- **P2–P7 not started** (calibrate volume (funnel geometry, not linear) -> wire the pump (24V + motor driver) ->
+  closed loop -> RMSE over 10 runs -> report).
 
 ---
 
@@ -185,8 +186,10 @@ Kept from the paper: DCT turbidity monitoring and row-wise gradient boundary det
   again).
 - **Calibration (ROI, mm/px, threshold, the volume table) is tied to the exact setup it was measured on** — it
   breaks the moment the camera or vessel moves.
-- **Never wire the pump into the Pi's GPIO / 5V / GND pins** — 12V/0.42A vs. GPIO's safe ~16 mA · this has
-  happened once already · `vcgencmd get_throttled` currently reads 0x0 (board is healthy).
+- **Never wire the pump into the Pi's GPIO / 5V / GND pins** — the pump runs on 24V, far above GPIO's safe
+  ~16 mA · this has happened once already, on the earlier 12V pump · `vcgencmd get_throttled` currently reads
+  0x0 (board is healthy). Only the HW-039 driver's logic pins (RPWM, R_EN, GND) connect to GPIO — its B+/B-/M+/M-
+  power terminals never do.
 - **A VPN on the machine viewing the web page** can block access to the Pi on the same LAN — disable it first if
   the page won't load.
 - `pkill -f realtime_stream` from the terminal will kill its own shell if that same command line contains the

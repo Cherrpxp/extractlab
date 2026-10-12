@@ -11,8 +11,10 @@ in `BACKLOG.md` with its own gate — nothing here is invented, it's `PRD.md`'s 
 | P3 | Wire the pump safely | Wiring reviewed, starts/stops on command, flow rate measured | Not started |
 | P4 | Closed loop (detect -> decide -> pump -> stop) | Clean separation, pump stops within target | Not started |
 | P5 | Repeatability study | RMSE < 2 mL across 10 runs, no run off by > 5 mL | Not started |
-| P6 | Switch to real water-cyclohexane | RMSE comparable to water/oil (within 50%) | Not started |
 | P7 | Write the report | — | Not started |
+
+(P6 — switching to cyclohexane — was removed: the advisor confirmed water-oil is the final target pair, not a
+rehearsal for a harder solvent. The gap in numbering is intentional.)
 
 ```mermaid
 flowchart LR
@@ -21,8 +23,7 @@ flowchart LR
     P2 --> P3["P3\nWire the pump"]
     P3 --> P4["P4\nClosed loop"]
     P4 --> P5["P5\nRepeatability\n10-run RMSE"]
-    P5 --> P6["P6\nCyclohexane"]
-    P6 --> P7["P7\nWrite report"]
+    P5 --> P7["P7\nWrite report"]
 
     classDef done fill:#1e3a2a,stroke:#57d98a,color:#e6e6e6
     classDef active fill:#3a2a12,stroke:#f0b085,color:#e6e6e6

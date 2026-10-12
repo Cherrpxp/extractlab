@@ -8,8 +8,8 @@ needs answered. The Gantt chart's five `crit` markers are **real deadlines** fro
 |---|---|---|---|---|
 | **M1 — Detection proven** | P0, P1 | Can a classical (non-ML) pipeline find and track the interface reliably? | P1 gate closed (`P1-08`) | In progress — P0 done, P1's only remaining item is `P1-08` |
 | **M2 — Volume + hardware ready** | P2, P3 | Can height convert to volume, and can the pump be driven safely? | P2 and P3 gates both closed | Not started |
-| **M3 — Closed loop validated** | P4, P5 | Does the whole system work unattended, repeatably? | P5 gate closed (10-run RMSE) | Not started |
-| **M4 — Cyclohexane + report** | P6, P7 | Does it hold up on the real target pair, and is it written up? | P6 gate closed, report submitted | Not started |
+| **M3 — Closed loop validated** | P4, P5 | Does the whole system work unattended, repeatably, on the final target pair (water-oil)? | P5 gate closed (10-run RMSE) | Not started |
+| **M4 — Report** | P7 | Is it written up? | Report submitted | Not started |
 
 ```mermaid
 gantt
@@ -29,18 +29,17 @@ gantt
 
     section M2 - volume + hardware ready (estimated)
     P2-02..04 measure, fit, verify          :p2, after p1, 21d
-    P3-01..06 relay + pump.py               :p3, after p2, 25d
+    P3-01..06 motor driver + pump.py        :p3, after p2, 25d
 
     section M3 - closed loop validated (estimated)
     P4-01..05 combine + dry run             :p4, 2027-01-05, 26d
     P5-01..03 10-run RMSE                   :p5, after p4, 26d
 
-    section M4 - cyclohexane + report (estimated)
-    P6-01..03 re-validate                   :p6, after p5, 26d
-    Draft report                            :p7, 2027-03-01, 2027-04-16
+    section M4 - report (estimated)
+    Draft report                            :p7, after p5, 40d
     Rehearse presentation                   :p7b, 2027-05-01, 12d
 ```
 
-This lands M1 (detection proven) well before the 27 Nov progress-report checkpoint, and M4 (cyclohexane +
-report draft) before the 23 Apr full-report deadline, with slack before the 13 May presentation. Only the five
-`crit` dates are commitments — adjust the phase bars freely as the actual pace becomes clearer.
+This lands M1 (detection proven) well before the 27 Nov progress-report checkpoint, and M4 (report draft) before
+the 23 Apr full-report deadline, with slack before the 13 May presentation. Only the five `crit` dates are
+commitments — adjust the phase bars freely as the actual pace becomes clearer.

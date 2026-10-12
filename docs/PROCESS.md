@@ -80,15 +80,17 @@ evidence it is correct — only a replay against a real recording, or a fresh li
 
 ## A second example: a spec that turned out to be wrong, and had to be rewritten
 
-Testing the row-gradient detector against a real separatory funnel (not the beaker used for the drain test
-above) found it locking onto a metal stopcock instead of the actual water/oil interface. Direct measurement
+Testing the row-gradient detector against the separatory funnel, while it still had its stopcock attached,
+found it locking onto the metal stopcock instead of the actual water/oil interface. Direct measurement
 confirmed why: the stopcock's edge scores |grad| ~13, while the real interface — clearly visible by eye — never
 registered as a gradient peak at all. Re-reading Chem-SDI with this result in hand showed their row-gradient
 step always runs after an ML segmentation mask removes exactly this kind of clutter; that step was deliberately
-left out of this project's design. This is now documented as risk 1 in `PRD.md` §5, and the choice between
-narrowing the ROI further versus building a color-independent motion-differencing detector is an open item in
-`BACKLOG.md` epic P1, to be resolved the same way as the `Tracker` fix: spec it, test it, then validate against
-real data before trusting it.
+left out of this project's design. This is now documented as risk 1 in `PRD.md` §5. The fix that was almost
+built — a color-independent motion-differencing detector — turned out to be unnecessary: re-checking the
+hardware showed the stopcock itself could simply be removed, which fixed the failure at the physical level
+instead of the software level. The lesson still applies the same way: spec it, test it, then validate against
+real data before trusting it — in this case, the "test" was asking whether the premise (a stopcock still being
+in frame) was even still true before writing any new code.
 
 ---
 

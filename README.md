@@ -1,7 +1,9 @@
-# extractlab — Automated Water–Cyclohexane LLE
+# extractlab — Automated Water–Oil LLE
 
-Detects the interface between two liquid phases (both colorless) with a camera, then drives a pump to separate
-them automatically. Uses **classical computer vision only** — no model training.
+Detects the interface between two immiscible liquid phases with a camera, then drives a pump to separate them
+automatically. Water and vegetable oil are the target pair — the research question is whether classical
+computer vision is enough, not whether the solvent is hazardous, so a non-toxic organic solvent satisfies it.
+Uses **classical computer vision only** — no model training.
 
 Adapted from **Chem-SDI** (Fu et al., *Microchemical Journal* 227, 2026), with the deep-learning and bespoke-
 hardware parts removed, keeping DCT turbidity monitoring and row-wise gradient boundary detection.
@@ -52,7 +54,7 @@ flowchart TD
     F -. "P2" .-> I["CalibrationTable: height -> volume (mL)"]
     H -. "gates start" .-> J
     I --> J["Pump start/stop decision — P4"]
-    J -. "P3, not wired" .-> K["Relay -> 12V pump"]
+    J -. "P3, not wired" .-> K["HW-039 motor driver -> 24V pump"]
 
     classDef pending fill:#f5f5f5,stroke:#999,stroke-dasharray: 4 4,color:#666
     class I,J,K pending
@@ -83,13 +85,13 @@ gantt
     Final complete report                   :crit, milestone, dl5, 2027-05-18, 0d
 
     section P1 - detect & track (estimated)
-    P1-07..09 decide + confirm live         :active, p1, 2026-10-08, 24d
+    P1-08 confirm live                      :active, p1, 2026-10-08, 10d
 
     section P2 - calibrate volume (estimated)
     P2-02..04 measure, fit, verify          :p2, after p1, 21d
 
     section P3 - wire the pump (estimated)
-    P3-01..06 relay + pump.py               :p3, after p2, 25d
+    P3-01..06 motor driver + pump.py        :p3, after p2, 25d
 
     section P4 - closed loop (estimated)
     P4-01..05 combine + dry run             :p4, 2027-01-05, 26d
@@ -97,12 +99,9 @@ gantt
     section P5 - repeatability study (estimated)
     P5-01..03 10-run RMSE                   :p5, after p4, 26d
 
-    section P6 - cyclohexane (estimated)
-    P6-01..03 re-validate                   :p6, after p5, 26d
-
-    section P7 - write the report (estimated)
-    Draft report                            :p7, 2027-03-01, 2027-04-16
-    Rehearse presentation                   :p7b, 2027-05-01, 12d
+    section P6 - write the report (estimated)
+    Draft report                            :p6, after p5, 40d
+    Rehearse presentation                   :p6b, 2027-05-01, 12d
 ```
 
 ---
@@ -110,18 +109,20 @@ gantt
 ## Status at a glance
 
 **Current phase: P1** (detect & track the interface) — see [`CHANGELOG.md`](CHANGELOG.md) for the dated,
-verified history behind this table and [`BACKLOG.md`](docs/BACKLOG.md) for the open items (`P1-07`-`P1-09`).
+verified history behind this table and [`BACKLOG.md`](docs/BACKLOG.md) for the one open item (`P1-08`).
 
 | Done | In progress | Not started |
 |---|---|---|
-| Core algorithms: `boundary_detection`, `turbidity_dct`, `volume_model`, `synthetic_data`, `demo` (`RESULT: PASS`) | Deciding how to handle the detector locking onto clutter instead of the interface in less-constrained scenes | Calibrating height -> volume with real measurements |
-| `tracking.py` — temporal filter, unit-tested (`tests/`), validated by replaying a real drain recording | Re-running a live drain to formally confirm the P1 gate | Wiring the pump safely (12V + relay) |
-| `realtime_stream.py` — live view, status panel, in-browser recording, CSV browser, self-healing watchdog | | Closed-loop control, a 10-run RMSE study, switching to real cyclohexane, the final report |
+| Core algorithms: `boundary_detection`, `turbidity_dct`, `volume_model`, `synthetic_data`, `demo` (`RESULT: PASS`) | Re-running a live drain on the reconfigured funnel to formally confirm the P1 gate | Calibrating height -> volume with real measurements (funnel geometry, not linear) |
+| `tracking.py` — temporal filter, unit-tested (`tests/`), validated by replaying a real drain recording | | Wiring the pump safely (24V + HW-039 motor driver) |
+| `realtime_stream.py` — live view, status panel, in-browser recording, CSV browser, self-healing watchdog | | Closed-loop control, a 10-run RMSE study, the final report |
 
 The detector reliably locks the real water/oil interface in a tightly-cropped, dark-background setup
-(`conf` ~12 vs. a threshold of 3). It has **not yet** been confirmed live with the current tracker fix, and it
-is known to lock onto clutter (e.g. a stopcock) instead of the interface in a less-constrained scene — see
-`PRD.md` §5, risk 1, and `BACKLOG.md` epic P1 for the candidate fixes under consideration.
+(`conf` ~12 vs. a threshold of 3). It has **not yet** been confirmed live with the current tracker fix. A
+separate finding — the detector locking onto a stopcock instead of the interface — turned out to be specific to
+an earlier funnel configuration; the stopcock has since been physically removed (the pump now draws from a tube
+entering through the top), so that failure mode no longer applies. See `PRD.md` §5, risk 1, for the full
+reasoning.
 
 ---
 
@@ -131,17 +132,20 @@ is known to lock onto clutter (e.g. a stopcock) instead of the interface in a le
 |---|---|---|
 | Raspberry Pi 5 | Single-board compute, vision + control | `ssh somdui@<pi-ip>` — IP varies by network |
 | Camera | Camera Module 3 (imx708) via `picamera2` | Manual exposure/AWB tuned on site |
-| Vessel | Cylindrical beaker (switched from a pear-shaped separatory funnel) | Separated via a pump intake tube at the bottom, no stopcock |
-| Pump | MINTLLAB DP-DIY, 12V, 5W (~0.42A) | **Not wired yet** |
+| Vessel | Pear-shaped separatory funnel, 125 mL | Stopcock physically removed; the pump draws from a tube entering through the top, not the bottom |
+| Pump | GROTHEN G928 peristaltic pump, 24V | Driven via an HW-039 (BTS7960) motor driver, not a relay — **not wired yet** |
+| PSU | S-50-24 switching supply, 24V 2A | Voltage confirmed matching the pump's rating |
 
 ### Pump safety
 
-**Never wire the pump directly into the Pi's GPIO / 5V / GND pins.** The pump draws 12V/0.42A; GPIO safely
-supplies at most ~16 mA. This has been done by mistake once already (`vcgencmd get_throttled` currently reads
-`0x0` — the board appears unharmed).
+**Never wire the pump directly into the Pi's GPIO / 5V / GND pins.** The pump runs on 24V, far above what GPIO
+safely supplies. This has been done by mistake once already, on the earlier 12V pump (`vcgencmd get_throttled`
+currently reads `0x0` — the board appears unharmed).
 
-**The correct wiring (not yet built):** an isolated 12V supply -> a relay module (5V logic) -> the pump, with
-GPIO only switching the relay.
+**The correct wiring (not yet built):** the 24V PSU feeds the HW-039 motor driver's power terminals (B+/B-),
+which drive the pump (M+/M-) — none of that touches the Pi. Only the driver's logic side (RPWM, R_EN, GND, and
+ideally VCC from a separate 5V source rather than the Pi's own 5V pin) connects to GPIO. Verify the driver's
+RPWM/R_EN pins actually respond to 3.3V logic before wiring anything live (`P3-04`).
 
 ### Network
 
@@ -228,11 +232,14 @@ python3 analyze_real_photo.py photo.jpg --roi 610 235 110 150 --profile-csv prof
 See `PRD.md` §5 for the full, reasoned risk list. In short:
 
 1. **The classical detector's signal-to-clutter ratio** — it locks onto whichever edge in the ROI has the
-   strongest gradient, not "the interface" specifically; confirmed to lock onto a stopcock instead of a real
-   water/oil interface in a less-constrained scene.
+   strongest gradient, not "the interface" specifically. This was confirmed to cause a real failure once (the
+   detector locking onto a stopcock), fixed by removing the stopcock from the apparatus — but the underlying
+   limitation (no concept of "interface," just "strongest edge") is still there as a general risk if the scene
+   ever gets less constrained again.
 2. **A single Pi 5 does both vision and control** — timing jitter during pump control is untested.
 3. **The calibration table is tied to the exact vessel and camera position measured** — it breaks if either
-   moves.
+   moves. The vessel is a funnel (frustum-shaped), not a cylinder, so this needs a multi-point calibration, not
+   a linear fit.
 4. **The pump is not wired yet** — see the safety section above.
 
 ---

@@ -63,3 +63,28 @@ def detect_boundary(frame_bgr: np.ndarray, roi: tuple[int, int, int, int] | None
         y = 0
     row, confidence, _profile, _gradient = detect_boundary_row(gray_roi, smooth_kernel)
     return row + y, confidence
+
+
+def detect_boundary_saturation(frame_bgr: np.ndarray, roi: tuple[int, int, int, int] | None = None,
+                                smooth_kernel: int = 5) -> tuple[int, float]:
+    """Detect the liquid-liquid interface using HSV saturation instead of
+    grayscale brightness.
+
+    Same call shape as detect_boundary. Measured against a real photo on
+    2026-10-13: at the true interface, saturation's gradient (~4.7) was more
+    than double grayscale's (~2.1) there -- oil's colour (high saturation)
+    vs water's near-colourless appearance (low saturation) is a real,
+    distinct signal that brightness alone discards. detect_boundary_row
+    only ever looks at a 2D array of per-row values, so it works unchanged
+    on a saturation channel exactly as it does on grayscale.
+    """
+    hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
+    saturation = hsv[:, :, 1]
+    if roi is not None:
+        x, y, w, h = roi
+        sat_roi = saturation[y:y + h, x:x + w]
+    else:
+        sat_roi = saturation
+        y = 0
+    row, confidence, _profile, _gradient = detect_boundary_row(sat_roi, smooth_kernel)
+    return row + y, confidence

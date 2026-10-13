@@ -23,6 +23,7 @@ from flask import Flask, Response, jsonify, send_from_directory
 from picamera2 import Picamera2
 
 from boundary_detection import detect_boundary
+from motion_detection import MOTION_CONFIDENCE_THRESHOLD, detect_boundary_motion
 from tracking import CONFIDENCE_THRESHOLD, Tracker
 
 # --- Camera framing --------------------------------------------------------
@@ -31,14 +32,23 @@ from tracking import CONFIDENCE_THRESHOLD, Tracker
 # liquid-liquid interface sits and will travel while draining. Exclude the
 # top air/liquid surface and the vessel base. Override without editing:
 #   ROI_X=555 ROI_Y=370 ROI_W=175 ROI_H=290 python3 realtime_stream.py
-# Current values: beaker on a black background, lab bench (2026-09-04).
+# This is the window used for the 2026-10-13 live drain recording that passed
+# the P1 gate (records/rec_20261013_162339.csv — found 98.2%, max jump 12px)
+# and for the first successful motion-mode drain the same day
+# (records/rec_20261013_185728.csv — 53.4s, conf 34-96 throughout). A same-
+# evening attempt to re-tune this for the static (non-draining) detector,
+# on a liquid that turned out not to have actually moved, kept landing on a
+# different row each time — the real static signal is weak enough to lose to
+# per-frame camera noise, so chasing a "more accurate" static ROI on settled
+# liquid is not a reliable exercise. This window is kept because it's the one
+# that's actually been validated, not because it's provably optimal.
 ROI = (
     int(os.environ.get("ROI_X", 555)),
     int(os.environ.get("ROI_Y", 370)),
     int(os.environ.get("ROI_W", 175)),
     int(os.environ.get("ROI_H", 290)),
 )
-_ROI_IS_PLACEHOLDER = False
+_ROI_IS_PLACEHOLDER = True  # unverified against the funnel setup — see note above
 
 # Row-profile smoothing window (pixels). Larger = smoother but coarser.
 SMOOTH_KERNEL = 5
@@ -59,8 +69,11 @@ JPEG_QUALITY = 80
 # AnalogueGain = brighter but noisier (gain > ~8 gets visibly grainy). In a
 # dim room raise exposure first, then gain — and really, add a light: no gain
 # setting recovers a clean signal from a near-black scene.
-# Current values: lab bench, beaker on black background (2026-09-04) — ROI mean
-# ~150/255. GAIN 8 is a bit grainy; trade toward EXPOSURE_US if the bench is
+# STALE: these values were tuned for the beaker on a black background
+# (2026-09-04), ROI mean ~150/255. The vessel is now a funnel and a live
+# reading showed ROI mean ~49/255 under the current framing — this needs
+# re-tuning (raise EXPOSURE_US and/or GAIN, or add a light) before trusting
+# detection. GAIN 8 is a bit grainy; trade toward EXPOSURE_US if the bench is
 # stable enough for the lower frame rate.
 EXPOSURE_US = int(os.environ.get("EXPOSURE_US", 25000))
 GAIN = float(os.environ.get("GAIN", 8.0))
@@ -100,6 +113,7 @@ _status = {
     "roi_brightness": 0.0,
     "fps": 0.0,
     "hint": "starting up",
+    "detector": "static",
 }
 
 
@@ -123,6 +137,13 @@ def _hint_for(found: bool, confidence: float, roi_brightness: float) -> str:
     return "เจอสัญญาณแล้ว — เช็คว่าเส้นแดงตรงกับรอยต่อน้ำ/น้ำมันจริงไหม แล้วจดค่า conf"
 
 
+# One-shot raw-frame capture, for feeding into analyze_real_photo.py's
+# --profile-csv -- a quantitative read of the row gradient instead of
+# eyeballing screenshots. Saves the frame BEFORE any detection overlay is
+# drawn on it (no box/lines baked in, unlike the live JPEG stream).
+_snapshot_lock = threading.Lock()
+_snapshot_request = None  # path to save to next frame, or None
+
 _frame_count = 0  # advanced every processed frame; watched for camera stalls
 
 
@@ -143,12 +164,25 @@ def _watchdog():
 
 
 def _capture_loop():
-    """Single producer: grab frames, run detection, publish JPEG + status."""
-    global _latest_jpeg, _frame_count
+    """Single producer: grab frames, run detection, publish JPEG + status.
+
+    Two detectors, swapped on the draining flag: detect_boundary (static
+    row-gradient) for pre-drain framing/setup, detect_boundary_motion
+    (frame-differencing) while a drain is actually running. The static
+    detector keeps locking onto whichever structural edge is strongest in
+    the ROI regardless of placement (measured against real photos: the
+    air/oil surface and valve fitting both score higher than the real
+    interface); every one of those false edges is static frame-to-frame,
+    so motion-differencing only sees the genuinely moving interface. This
+    is the configuration validated against a real 53.4s drain on
+    2026-10-13 (records/rec_20261013_185728.csv — conf 34-96 throughout).
+    """
+    global _latest_jpeg, _frame_count, _snapshot_request
     x, y, w, h = ROI
     tracker = Tracker()
     prev = time.monotonic()
     fps = 0.0
+    prev_frame = None  # previous raw frame, for motion-differencing while draining
     while True:
         # picamera2's "RGB888" format delivers the numpy array in BGR channel
         # order already (libcamera naming quirk) — exactly what OpenCV wants
@@ -156,9 +190,28 @@ def _capture_loop():
         # an RGB<->BGR swap turns the yellow organic layer blue.
         frame = picam2.capture_array()
 
-        boundary_y, confidence = detect_boundary(frame, roi=ROI, smooth_kernel=SMOOTH_KERNEL)
-        found = bool(confidence >= CONFIDENCE_THRESHOLD)
-        y_smooth = tracker.update(int(boundary_y), float(confidence), draining=_rec["on"])
+        with _snapshot_lock:
+            if _snapshot_request:
+                cv2.imwrite(_snapshot_request, frame)
+                _snapshot_request = None
+
+        draining = _rec["on"]
+        if draining:
+            detector = "motion"
+            boundary_y, confidence = detect_boundary_motion(prev_frame, frame, roi=ROI,
+                                                              smooth_kernel=SMOOTH_KERNEL)
+            threshold = MOTION_CONFIDENCE_THRESHOLD
+        else:
+            detector = "static"
+            boundary_y, confidence = detect_boundary(frame, roi=ROI, smooth_kernel=SMOOTH_KERNEL)
+            threshold = CONFIDENCE_THRESHOLD
+        found = bool(boundary_y is not None and confidence >= threshold)
+        # boundary_y is None only on the first frame right after a drain starts
+        # (no previous frame to diff against yet) -- feed the tracker a
+        # placeholder raw value; conf=0 means S3 holds the last value, same as
+        # any other sub-threshold frame, so the placeholder is never actually used.
+        tracker_raw = boundary_y if boundary_y is not None else 0
+        y_smooth = tracker.update(int(tracker_raw), float(confidence), draining=draining)
         roi_gray = cv2.cvtColor(frame[y:y + h, x:x + w], cv2.COLOR_BGR2GRAY)
         roi_brightness = float(roi_gray.mean())
 
@@ -174,8 +227,9 @@ def _capture_loop():
         if y_smooth is not None:
             ys = int(round(y_smooth))
             cv2.line(frame, (x, ys), (x + w, ys), (0, 255, 255), 2)  # smoothed, thick yellow
-        label = (f"y={boundary_y} (smooth {int(round(y_smooth))})" if y_smooth is not None
-                 else f"y={boundary_y}") + f" conf={confidence:.1f}" + ("" if found else "  (no boundary)")
+        raw_label = f"y={boundary_y}" if boundary_y is not None else "y=—"
+        label = (f"{raw_label} (smooth {int(round(y_smooth))})" if y_smooth is not None
+                 else raw_label) + f" conf={confidence:.1f} mode={detector}" + ("" if found else "  (no boundary)")
         cv2.putText(frame, label, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
                     (0, 255, 0) if found else (0, 165, 255), 2)
 
@@ -186,25 +240,29 @@ def _capture_loop():
 
         with _status_lock:
             _status.update(
-                boundary_y=int(boundary_y),
+                boundary_y=boundary_y,
                 boundary_y_smooth=None if y_smooth is None else int(round(y_smooth)),
                 confidence=round(confidence, 2),
                 found=found,
                 roi_brightness=round(roi_brightness, 1),
                 fps=round(fps, 1),
                 hint=_hint_for(found, confidence, roi_brightness),
+                detector=detector,
             )
 
         with _rec_lock:
             if _rec["on"]:
                 _rec["writer"].writerow([
-                    round(time.monotonic() - _rec["t0"], 2), int(boundary_y),
+                    round(time.monotonic() - _rec["t0"], 2),
+                    "" if boundary_y is None else int(boundary_y),
                     "" if y_smooth is None else int(round(y_smooth)),
                     round(confidence, 3), int(found), round(roi_brightness, 1),
-                    round(fps, 1),
+                    round(fps, 1), detector,
                 ])
                 _rec["n"] += 1
                 _rec["fh"].flush()
+
+        prev_frame = frame
 
 
 _latest_jpeg = b""
@@ -262,12 +320,12 @@ PAGE = """<!doctype html>
   <div class="panel">
 
     <div class="card">
-      <h1>ระบบตรวจจับรอยต่อของเหลว (Water–Cyclohexane LLE)</h1>
+      <h1>ระบบตรวจจับรอยต่อของเหลว (Water–Oil LLE)</h1>
       <p class="sub">คลาสสิก computer vision — ไม่ใช้โมเดล deep learning</p>
       <h2>กำลังทำอะไรอยู่</h2>
       <p>กล้องจับภาพกรวยแยกเฉพาะในกรอบเขียว (ROI) แล้วหาค่าความสว่างเฉลี่ยของ
       แต่ละแถวพิกเซล มองหาแถวที่ความสว่าง<b>เปลี่ยนแรงที่สุด</b> = ตำแหน่งรอยต่อ
-      ระหว่างชั้นน้ำกับชั้นน้ำมัน</p>
+      ระหว่างชั้นน้ำกับชั้นน้ำมัน (ตอนดูดจริงสลับไปใช้การเทียบเฟรมที่ขยับแทน)</p>
       <p><span style="color:#ffd23f">เส้นเหลือง</span> = ค่าที่กรองแล้ว (ใช้อันนี้) &nbsp;·&nbsp;
       <span style="color:#ff5c5c">เส้นแดงบาง</span> = ค่าดิบรายเฟรม &nbsp;·&nbsp;
       <span style="color:#57d98a">กรอบเขียว</span> = ROI &nbsp;·&nbsp;
@@ -300,7 +358,7 @@ PAGE = """<!doctype html>
         <li>เติม <b>น้ำ + น้ำมันพืช</b> ลงกรวย ให้เห็นรอยต่อชัดด้วยตาก่อน</li>
         <li>เอา <b>กระดาษขาว</b> บังหลังกรวยโดยตรง ลดฉากหลังรก (ม่าน/ถุง/เชือก)</li>
         <li>ปรับ <code>ROI</code> ใน <code>realtime_stream.py</code> ให้เหลือแค่
-            <b>ตัวป่องกลางกรวย</b> — ตัดคอกรวยบนกับก้าน+stopcock ล่างออก</li>
+            <b>ตัวป่องกลางกรวย</b> — ตัดคอกรวยบนกับก้านล่างออก</li>
         <li>ดูว่าเส้นแดงเกาะรอยต่อจริงไหม จดค่า <code>conf</code> ตอน<b>มี</b>และ<b>ไม่มี</b>รอยต่อ</li>
         <li>จูน <code>CONFIDENCE_THRESHOLD</code> จากค่าที่จดได้</li>
       </ol>
@@ -313,9 +371,9 @@ PAGE = """<!doctype html>
         <li><b>ตอนนี้:</b> พิสูจน์ว่าสัญญาณความสว่างธรรมชาติพอจับรอยต่อของเหลวใส
             2 ชนิดได้ โดยไม่ต้องใช้สารเรืองแสง</li>
         <li>Calibrate ตารางความสูง → ปริมาตร ด้วยน้ำจริง</li>
-        <li>ต่อปั๊มผ่านไฟ 12V + relay อย่างปลอดภัย (ห้ามต่อ GPIO ตรงเข้าปั๊ม)</li>
+        <li>ต่อปั๊มผ่านไฟ 24V + มอเตอร์ไดรเวอร์ HW-039 อย่างปลอดภัย (ห้ามต่อ GPIO ตรงเข้าปั๊ม)</li>
         <li>เชื่อมโค้ดตรวจจับ + ควบคุมปั๊ม → ระบบแยกของเหลวอัตโนมัติครบวงจร</li>
-        <li>ทดสอบซ้ำ 10 รอบ เก็บ RMSE → เปลี่ยนไปใช้น้ำ–ไซโคลเฮกเซนจริง</li>
+        <li>ทดสอบซ้ำ 10 รอบ เก็บ RMSE → เขียนรายงาน</li>
       </ul>
     </div>
 
@@ -417,7 +475,7 @@ def record_start():
         fh = open(path, "w", newline="")
         wr = csv.writer(fh)
         wr.writerow(["elapsed_s", "boundary_y", "boundary_y_smooth",
-                     "confidence", "found", "roi_brightness", "fps"])
+                     "confidence", "found", "roi_brightness", "fps", "detector"])
         _rec.update(on=True, path=path, fh=fh, writer=wr, n=0, t0=time.monotonic())
     return jsonify(ok=True, name=os.path.basename(path))
 
@@ -437,7 +495,7 @@ def record_stop():
     with open(path) as fh:
         rows = list(csv.DictReader(fh))
     if rows:
-        raw = [int(r["boundary_y"]) for r in rows]
+        raw = [int(r["boundary_y"]) for r in rows if r["boundary_y"] not in ("", None)]
         sm = [int(r["boundary_y_smooth"]) for r in rows if r["boundary_y_smooth"] not in ("", None)]
         cs = [float(r["confidence"]) for r in rows]
         fs = [int(r["found"]) for r in rows]
@@ -478,6 +536,25 @@ def records_get(name):
         return "bad name", 400
     return send_from_directory(RECORD_DIR, name, mimetype="text/csv",
                                as_attachment=False)
+
+
+@app.route("/snapshot", methods=["POST"])
+def snapshot():
+    """Save the next raw (undrawn) frame to records/ — for analyze_real_photo.py's
+    --profile-csv, a quantitative read of the row gradient instead of eyeballing
+    screenshots."""
+    os.makedirs(RECORD_DIR, exist_ok=True)
+    name = "snap_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + ".jpg"
+    path = os.path.join(RECORD_DIR, name)
+    global _snapshot_request
+    with _snapshot_lock:
+        _snapshot_request = path
+    for _ in range(40):  # up to ~2s for the capture loop to service it
+        time.sleep(0.05)
+        with _snapshot_lock:
+            if _snapshot_request is None:
+                return jsonify(ok=True, name=name, path=path)
+    return jsonify(ok=False, error="timed out waiting for a frame")
 
 
 @app.route("/video_feed")

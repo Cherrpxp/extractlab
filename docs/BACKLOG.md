@@ -69,13 +69,28 @@ Goal: convert `boundary_y` into a volume estimate. The vessel is a funnel, not a
 multi-point calibration table rather than a linear fit.
 
 - [x] **P2-01** `volume_model.py` — `CalibrationTable` (interpolate / JSON / inverse) written and unit-tested
-- [ ] **P2-02** Measure the funnel's geometry + the mm/px scale (photograph a ruler) + the zero-volume
-      reference row
-- [ ] **P2-03** Fill the funnel to 3+ known volumes, record the pixel row at each, build the calibration table
-      (not a single linear fit — a frustum is not linear)
-- [ ] **P2-04** Verify against a volume not used for fitting — target RMSE < 2 mL (see PRD §4 for why)
+- [x] **P2-02** Superseded by a better approach than the planned mm/px-ruler-photo method: skip the mm/px/
+      zero-row conversion entirely and calibrate `boundary_y` (camera pixel row) -> `volume_ml` directly.
+      First attempt at the original `EXPOSURE_US=25000` default failed -- a false structural edge at the
+      bulb/cone transition (detector locks onto it instead of the real surface around 30-37 mL) and poor
+      repeatability elsewhere (15 mL spread 43px / ~10-12 mL equivalent across 5 cylinder-measured repeats).
+      **Root cause: insufficient exposure, not geometry.** Raising `EXPOSURE_US` to 45000 (ROI brightness
+      ~100-120 -> ~136-157/255) fixed it -- every one of 10/15/20/25/30/35/40 mL re-checked within 1-5px of
+      a single clean reading, and 35 mL specifically got 4 fresh repeats within 2px of each other. Saved as
+      `records/pixel_calibration_table.json`; full investigation log in `records/pixel_calibration.json`
+- [x] **P2-03** Filled the funnel to 4 known water volumes (10/20/30/40 mL, graduated cylinder) from empty,
+      read the water-surface height in cm at each with a ruler, built `CalibrationTable` from
+      (height_mm, volume_ml) pairs — saved to `records/calibration_table.json`. Not pixel-row-based (see
+      P2-02); a first, looser attempt via draining + two divergent fluids (water/oil) is kept in
+      `records/calibration_points_v2.json` for reference but was not used (it didn't reproduce cleanly — see
+      the discussion recorded there)
+- [x] **P2-04** Verified against held-out volumes not used for fitting, on both tables:
+      ruler-based (15, 35 mL) — RMSE = 0.589 mL; camera-direct, `EXPOSURE_US=45000` (15, 25, 35 mL) —
+      RMSE = 0.436 mL. Both well under the 2 mL target
 
-Gate: predicted-volume RMSE < 2 mL against a graduated cylinder.
+Gate: predicted-volume RMSE < 2 mL against a graduated cylinder. **Met by both tables** — ruler-based
+(0.589 mL, `records/calibration_table.json`) and camera-direct (0.436 mL, `records/pixel_calibration_table.json`,
+the one the live system should actually read from since it needs no manual ruler step).
 
 ---
 

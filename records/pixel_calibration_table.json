@@ -1,0 +1,8 @@
+{
+  "boundary_y": [459, 483, 514, 555],
+  "volumes_ml": [40.0, 30.0, 20.0, 10.0],
+  "exposure_us": 45000,
+  "gain": 8.0,
+  "roi": [555, 370, 175, 290],
+  "note": "Direct camera pixel_row -> volume_ml table, skipping the mm/px/ruler step entirely. Built from 4 points (water alone, graduated cylinder, fresh pours), validated against 3 held-out points (15/25/35 mL) with RMSE 0.436 mL -- better than the ruler-based records/calibration_table.json (0.589 mL). Only works at EXPOSURE_US=45000 (ROI brightness ~136-157/255); the original EXPOSURE_US=25000 default was not repeatable (see records/pixel_calibration.json for the full investigation). boundary_y is sorted ascending here (increasing row = less volume, since the liquid surface drops toward the frame bottom as volume decreases) -- invert the lookup direction accordingly, do not treat boundary_y as a height."
+}

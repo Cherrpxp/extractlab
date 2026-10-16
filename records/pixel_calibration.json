@@ -1,0 +1,151 @@
+[
+  {
+    "water_ml": 10.0,
+    "oil_ml": 0.0,
+    "boundary_y": 559,
+    "confidence": 9.4,
+    "method": "live camera /status, water alone, water filled from empty via graduated cylinder",
+    "t": "2026-10-16"
+  },
+  {
+    "water_ml": 20.0,
+    "oil_ml": 0.0,
+    "boundary_y": 517,
+    "confidence": 11.36,
+    "method": "live camera /status, water alone, +10 mL via graduated cylinder",
+    "t": "2026-10-16"
+  },
+  {
+    "water_ml": 30.0,
+    "oil_ml": 0.0,
+    "boundary_y": 487,
+    "confidence": 13.14,
+    "method": "live camera /status, water alone, +10 mL via graduated cylinder",
+    "t": "2026-10-16"
+  },
+  {
+    "water_ml": 40.0,
+    "oil_ml": 0.0,
+    "boundary_y": 464,
+    "confidence": 13.44,
+    "method": "live camera /status, water alone, +10 mL via graduated cylinder",
+    "t": "2026-10-16"
+  },
+  {
+    "role": "validation",
+    "water_ml": 15.0,
+    "oil_ml": 0.0,
+    "boundary_y": 552,
+    "confidence": 10.34,
+    "method": "live camera /status, water alone -- held out for RMSE check, not used to build the table",
+    "t": "2026-10-16"
+  },
+  {
+    "role": "validation",
+    "water_ml": 5.0,
+    "oil_ml": 0.0,
+    "boundary_y": 584,
+    "confidence": 7.53,
+    "method": "live camera /status, water alone -- held out for RMSE check. First reading at this volume (382) was thrown out, caused by camera shake (confirmed visually against the raw snapshot -- locked onto the ROI's top edge, not the liquid); this is the re-check after the camera settled.",
+    "t": "2026-10-16"
+  },
+  {
+    "role": "repeatability_check",
+    "water_ml": 15.0,
+    "oil_ml": 0.0,
+    "boundary_y_repeats": [552, 509, 522, 530, 530],
+    "spread_px": 43,
+    "spread_volume_ml_approx": 12,
+    "note": "Five separate checks at a cylinder-measured 15 mL (not reused/estimated -- user re-measured each time, draining and re-pouring fresh before the last one), each visually confirmed by the user as 'the detected line looks right' against the real liquid edge at the time. boundary_y spread 43px across the first four (~10-12 mL equivalent at this region's local slope); the 5th (fresh re-pour) landed on exactly the same value as the 4th (530, confirmed on a second /status query). Conclusion: the static detector itself is not repeatable at this operating point under the current lighting/ROI, independent of pour accuracy or single-frame visual plausibility -- a genuine finding, not a one-off error. Documented as a limitation; the ruler-based records/calibration_table.json (RMSE 0.589 mL) remains the table actually used.",
+    "t": "2026-10-16"
+  },
+  {
+    "role": "repeatability_check",
+    "water_ml": 25.0,
+    "oil_ml": 0.0,
+    "boundary_y_repeats": [520, 494],
+    "spread_px": 26,
+    "note": "Two separate checks at a cylinder-measured 25 mL. 26px spread -- consistent with the same non-repeatability pattern found at 15 mL, at a different volume/region of the ROI.",
+    "t": "2026-10-16"
+  },
+  {
+    "role": "repeatability_check",
+    "water_ml": 35.0,
+    "oil_ml": 0.0,
+    "boundary_y_repeats": [486, 486, 467],
+    "note": "First two checks (one at 35 mL, one at a re-poured 37 mL) both locked onto the same value (486) -- the structural bulb/cone edge, matching the 30 mL point almost exactly (487). This third check, a fresh re-pour at 35 mL, instead landed near where the table would predict (interpolated ~475.5 between 30 mL/487 and 40 mL/464), off by only ~8px. So the failure mode here isn't a hard permanent lock -- the detector sometimes finds a position close to correct and sometimes snaps to the false edge, at the same nominal volume. Same conclusion as the 15/25 mL repeatability checks (not repeatable under current ROI/lighting), different symptom (bimodal/intermittent here vs. continuous spread there).",
+    "t": "2026-10-16"
+  },
+  {
+    "role": "repeatability_check_after_exposure_fix",
+    "water_ml": 35.0,
+    "oil_ml": 0.0,
+    "boundary_y_repeats": [472, 473, 472, 471],
+    "spread_px": 2,
+    "exposure_us": 45000,
+    "gain": 8.0,
+    "roi_brightness_observed": "136-157",
+    "note": "EXPOSURE_US raised from the 25000 default to 45000 (ROI brightness ~100-120 -> ~136-157/255), same ROI/focus otherwise. Four fresh cylinder-measured 35 mL pours (drained and re-poured each time, not reused) all landed within 2px of each other (472, 473, 472, 471) -- versus 43px spread (15 mL) and the 486/486/467 bimodal lock (35/37 mL) seen before this change. Conclusion: insufficient exposure, not a hard geometric/ROI problem, was the dominant cause of the earlier non-repeatability. Camera-direct pixel_row calibration should be re-attempted at this exposure level before concluding it's unusable -- the earlier 'use the ruler table instead' recommendation may need revisiting once this is confirmed across the other volumes (10/20/30/40/15/25) too.",
+    "t": "2026-10-16"
+  },
+  {
+    "role": "re-check_after_exposure_fix",
+    "water_ml": 10.0,
+    "oil_ml": 0.0,
+    "boundary_y": 555,
+    "confidence": 9.93,
+    "exposure_us": 45000,
+    "method": "live camera /status, water alone, fresh cylinder-measured pour under EXPOSURE_US=45000. Close to the original reading at this volume under the old exposure (559, -4px).",
+    "t": "2026-10-16"
+  },
+  {
+    "role": "re-check_after_exposure_fix",
+    "water_ml": 15.0,
+    "oil_ml": 0.0,
+    "boundary_y": 532,
+    "confidence": 10.86,
+    "exposure_us": 45000,
+    "method": "live camera /status, water alone, fresh cylinder-measured pour under EXPOSURE_US=45000. First check at this volume under new exposure -- within the old spread range (509-552), needs repeats to confirm improved repeatability like the 35 mL point got.",
+    "t": "2026-10-16"
+  },
+  {
+    "role": "re-check_after_exposure_fix",
+    "water_ml": 20.0,
+    "oil_ml": 0.0,
+    "boundary_y": 514,
+    "confidence": 11.79,
+    "exposure_us": 45000,
+    "method": "live camera /status, water alone, fresh cylinder-measured pour under EXPOSURE_US=45000. Close to the original reading at this volume under the old exposure (517, -3px).",
+    "t": "2026-10-16"
+  },
+  {
+    "role": "re-check_after_exposure_fix",
+    "water_ml": 25.0,
+    "oil_ml": 0.0,
+    "boundary_y": 498,
+    "confidence": 12.46,
+    "exposure_us": 45000,
+    "method": "live camera /status, water alone, fresh cylinder-measured pour under EXPOSURE_US=45000. Within the old spread range (494-520), close to the lower end.",
+    "t": "2026-10-16"
+  },
+  {
+    "role": "re-check_after_exposure_fix",
+    "water_ml": 30.0,
+    "oil_ml": 0.0,
+    "boundary_y": 483,
+    "confidence": 13.02,
+    "exposure_us": 45000,
+    "method": "live camera /status, water alone, fresh cylinder-measured pour under EXPOSURE_US=45000. Close to the original reading at this volume under the old exposure (487, -4px).",
+    "t": "2026-10-16"
+  },
+  {
+    "role": "re-check_after_exposure_fix",
+    "water_ml": 40.0,
+    "oil_ml": 0.0,
+    "boundary_y": 459,
+    "confidence": 15.06,
+    "exposure_us": 45000,
+    "method": "live camera /status, water alone, fresh cylinder-measured pour under EXPOSURE_US=45000. Close to the original reading at this volume under the old exposure (464, -5px). Full sweep complete: 10/15/20/25/30/35/40 mL all re-checked under EXPOSURE_US=45000.",
+    "t": "2026-10-16"
+  }
+]

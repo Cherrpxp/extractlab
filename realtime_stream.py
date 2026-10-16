@@ -69,25 +69,46 @@ JPEG_QUALITY = 80
 # AnalogueGain = brighter but noisier (gain > ~8 gets visibly grainy). In a
 # dim room raise exposure first, then gain — and really, add a light: no gain
 # setting recovers a clean signal from a near-black scene.
-# STALE: these values were tuned for the beaker on a black background
-# (2026-09-04), ROI mean ~150/255. The vessel is now a funnel and a live
-# reading showed ROI mean ~49/255 under the current framing — this needs
-# re-tuning (raise EXPOSURE_US and/or GAIN, or add a light) before trusting
-# detection. GAIN 8 is a bit grainy; trade toward EXPOSURE_US if the bench is
-# stable enough for the lower frame rate.
-EXPOSURE_US = int(os.environ.get("EXPOSURE_US", 25000))
+# Re-tuned 2026-10-16 against the current funnel setup (ruler clamped to the
+# stand, white reflector card behind it): ROI brightness ~100-120/255 at the
+# old 25000us default was NOT enough -- pixel_row calibration checks
+# (records/pixel_calibration.json) found the static detector unrepeatable
+# there (43px spread across cylinder-measured repeats at the same volume, and
+# an intermittent false lock onto the bulb/cone structural edge). Raising
+# EXPOSURE_US to 45000 (brightness ~136-157/255) fixed both: 7 volumes
+# (10-40 mL) each re-checked within 1-5px of a clean reading, and one point
+# got 4 repeats within 2px of each other. GAIN 8 is a bit grainy; trade
+# toward EXPOSURE_US if the bench is stable enough for the lower frame rate
+# (~22 FPS at this exposure, down from ~39 at the old default).
+EXPOSURE_US = int(os.environ.get("EXPOSURE_US", 45000))
 GAIN = float(os.environ.get("GAIN", 8.0))
 # White balance (red gain, blue gain), read off AWB under the current lighting.
 # Re-run the AWB calibration if the lighting changes.
 WB_RED = float(os.environ.get("WB_RED", 2.14))
 WB_BLUE = float(os.environ.get("WB_BLUE", 1.76))
 
+# Camera Module 3 (imx708) has autofocus; left unset it defaults to continuous
+# AF, which hunts on this scene (clear glass, dim ROI ~49/255) and can
+# refocus mid-drain -- a focus shift changes the whole frame, which the
+# motion detector (motion_detection.py) would misread as interface movement
+# everywhere, not just at the real boundary. Same reasoning as manual
+# exposure/AWB above: lock it down once a good distance is found.
+#   FOCUS_MODE=auto python3 realtime_stream.py        # let it hunt once, watch the stream
+#   FOCUS_MODE=continuous python3 realtime_stream.py  # keeps re-focusing (debugging only)
+#   LENS_POSITION=4.0 python3 realtime_stream.py       # manual, diopters (1/distance_m)
+# Default below (3.6613) came from one FOCUS_MODE=auto cycle against the
+# current camera/funnel distance (2026-10-16) -- re-run that cycle and update
+# this if the rig moves.
+FOCUS_MODE = os.environ.get("FOCUS_MODE", "manual")
+LENS_POSITION = float(os.environ.get("LENS_POSITION", 3.661302328109741))
+_AF_MODE_MAP = {"manual": 0, "auto": 1, "continuous": 2}
+
 app = Flask(__name__)
 
 picam2 = Picamera2()
 _config = picam2.create_video_configuration(main={"size": FRAME_SIZE, "format": "RGB888"})
 picam2.configure(_config)
-picam2.set_controls({
+_controls = {
     "AeEnable": False,
     "AwbEnable": False,
     "ColourGains": (WB_RED, WB_BLUE),
@@ -98,8 +119,17 @@ picam2.set_controls({
     "FrameDurationLimits": (100, 1_000_000),
     "ExposureTime": EXPOSURE_US,
     "AnalogueGain": GAIN,
-})
+    "AfMode": _AF_MODE_MAP[FOCUS_MODE],
+}
+if FOCUS_MODE == "manual":
+    _controls["LensPosition"] = LENS_POSITION
+picam2.set_controls(_controls)
 picam2.start()
+if FOCUS_MODE == "auto":
+    picam2.autofocus_cycle()  # one-shot: hunts once, then holds
+    _locked_pos = picam2.capture_metadata().get("LensPosition")
+    print(f"[focus] autofocus locked at LensPosition={_locked_pos} "
+          f"-- rerun with LENS_POSITION={_locked_pos} FOCUS_MODE=manual to bake this in", flush=True)
 time.sleep(1)  # let exposure/gain settle before streaming
 
 # Latest detection result, shared with the /status endpoint. Updated once per

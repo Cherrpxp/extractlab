@@ -1,0 +1,168 @@
+[
+  {
+    "oil_ml": 40.0,
+    "water_ml": 40.0,
+    "interface_cm": 7.0,
+    "air_oil_surface_cm": 9.0,
+    "method": "ruler (cm), hand-held against funnel, photo-read",
+    "t": "2026-10-16"
+  },
+  {
+    "oil_ml": 40.0,
+    "water_ml": 30.0,
+    "interface_cm": 5.5,
+    "air_oil_surface_cm": 8.2,
+    "method": "ruler (cm), hand-held against funnel, photo-read; water drained -10 mL via stopcock, oil_ml assumed unchanged",
+    "t": "2026-10-16"
+  },
+  {
+    "oil_ml": 40.0,
+    "water_ml": 20.0,
+    "interface_cm": 5.1,
+    "air_oil_surface_cm": 7.8,
+    "method": "ruler (cm), hand-held against funnel, photo-read; water drained -10 mL via stopcock, oil_ml assumed unchanged",
+    "t": "2026-10-16"
+  },
+  {
+    "oil_ml": 40.0,
+    "water_ml": 10.0,
+    "interface_cm": 3.2,
+    "air_oil_surface_cm": 7.2,
+    "method": "ruler (cm), hand-held against funnel, photo-read; water drained -10 mL via stopcock, oil_ml assumed unchanged",
+    "t": "2026-10-16"
+  },
+  {
+    "oil_ml": 40.0,
+    "water_ml": 10.0,
+    "water_ml_measured_on_final_drain": 7.1,
+    "water_ml_note": "Cumulative subtraction (40 - 10 - 10 - 10) gives 10.0 mL, but draining all remaining water and measuring it directly gave 7.1 mL -- a 2.9 mL discrepancy against three prior graduated-cylinder readings that were each reported as exact. Source not isolated (residue on glassware/valve across repeated transfers is the likely candidate). Both values kept; treat this point's water_ml as uncertain by ~3 mL rather than picking one as correct.",
+    "interface_cm": 0.0,
+    "air_oil_surface_cm": 7.0,
+    "method": "ruler (cm), hand-held against funnel, photo-read; all water drained via stopcock -- oil only remains, interface_cm taken as the vessel zero reference",
+    "t": "2026-10-16"
+  },
+  {
+    "oil_ml": 30.0,
+    "water_ml": 0.0,
+    "interface_cm": 0.0,
+    "air_oil_surface_cm": 6.2,
+    "method": "ruler (cm), hand-held against funnel, photo-read; oil-only (water=0), 10 mL oil drained via stopcock -- extends the same height<->volume geometric calibration using oil instead of water, since the mapping should be fluid-agnostic (vessel geometry only)",
+    "t": "2026-10-16"
+  },
+  {
+    "oil_ml": 20.0,
+    "water_ml": 0.0,
+    "interface_cm": 0.0,
+    "air_oil_surface_cm": 5.5,
+    "method": "ruler (cm), hand-held against funnel, photo-read; oil-only (water=0), 10 mL oil drained via stopcock",
+    "t": "2026-10-16"
+  },
+  {
+    "oil_ml": 10.0,
+    "water_ml": 0.0,
+    "interface_cm": 0.0,
+    "air_oil_surface_cm": 4.8,
+    "method": "ruler (cm), hand-held against funnel, photo-read; oil-only (water=0), 10 mL oil drained via stopcock",
+    "t": "2026-10-16"
+  },
+  {
+    "oil_ml": 10.0,
+    "oil_ml_measured_on_final_drain": 10.3,
+    "oil_ml_note": "Cumulative subtraction (20 - 10) gives 10.0 mL; draining the rest and measuring it directly gave 10.3 mL -- a 0.3 mL discrepancy, small and consistent with ordinary measurement uncertainty (unlike the 2.9 mL gap on the water side). Both values kept.",
+    "water_ml": 0.0,
+    "interface_cm": 0.0,
+    "air_oil_surface_cm": 0.0,
+    "method": "vessel fully emptied (oil and water both drained) -- the zero-volume reference point",
+    "t": "2026-10-16"
+  },
+  {
+    "round": 2,
+    "oil_ml": 0.0,
+    "water_ml": 10.0,
+    "interface_cm": 4.5,
+    "method": "ruler (cm), photo-read; round 2, fill-based (water added from empty via graduated cylinder, not drained) -- water alone, no oil yet",
+    "t": "2026-10-16"
+  },
+  {
+    "round": 2,
+    "oil_ml": 0.0,
+    "water_ml": 20.0,
+    "interface_cm": 5.7,
+    "method": "ruler (cm), photo-read; round 2, fill-based -- water alone, no oil yet",
+    "t": "2026-10-16"
+  },
+  {
+    "round": 2,
+    "oil_ml": 0.0,
+    "water_ml": 30.0,
+    "interface_cm": 6.4,
+    "method": "ruler (cm), photo-read; round 2, fill-based -- water alone, no oil yet",
+    "t": "2026-10-16"
+  },
+  {
+    "round": 2,
+    "oil_ml": 0.0,
+    "water_ml": 40.0,
+    "interface_cm": 7.2,
+    "method": "ruler (cm), photo-read; round 2, fill-based -- water alone, no oil yet",
+    "t": "2026-10-16"
+  },
+  {
+    "round": 2,
+    "oil_ml": 40.0,
+    "oil_ml_note": "Not restated this round; assumed 40 mL by match -- the water=40/oil=40 combined reading below (9.0 cm) reproduces round 1's first point exactly, which supports this assumption.",
+    "water_ml": 10.0,
+    "interface_cm": 4.5,
+    "air_oil_surface_cm": 7.6,
+    "method": "ruler (cm), photo-read; round 2, fill-based -- oil layered on top of the water_ml above, combined surface height",
+    "t": "2026-10-16"
+  },
+  {
+    "round": 2,
+    "oil_ml": 40.0,
+    "oil_ml_note": "Not restated this round; assumed 40 mL (see note on the water_ml=10 combined point)",
+    "water_ml": 20.0,
+    "interface_cm": 5.7,
+    "air_oil_surface_cm": 8.4,
+    "method": "ruler (cm), photo-read; round 2, fill-based -- oil layered on top of the water_ml above, combined surface height",
+    "t": "2026-10-16"
+  },
+  {
+    "round": 2,
+    "oil_ml": 40.0,
+    "oil_ml_note": "Not restated this round; assumed 40 mL (see note on the water_ml=10 combined point)",
+    "water_ml": 30.0,
+    "interface_cm": 6.4,
+    "air_oil_surface_cm": 8.7,
+    "method": "ruler (cm), photo-read; round 2, fill-based -- oil layered on top of the water_ml above, combined surface height",
+    "t": "2026-10-16"
+  },
+  {
+    "round": 2,
+    "oil_ml": 40.0,
+    "oil_ml_note": "Not restated this round; assumed 40 mL -- matches round 1's water=40/oil=40 point (9.0 cm) exactly",
+    "water_ml": 40.0,
+    "interface_cm": 7.2,
+    "air_oil_surface_cm": 9.0,
+    "method": "ruler (cm), photo-read; round 2, fill-based -- oil layered on top of the water_ml above, combined surface height",
+    "t": "2026-10-16"
+  },
+  {
+    "round": 2,
+    "role": "validation",
+    "oil_ml": 0.0,
+    "water_ml": 15.0,
+    "interface_cm": 5.0,
+    "method": "ruler (cm), photo-read; round 2, fill-based, water alone -- held out for P2-04, not used to build the calibration table",
+    "t": "2026-10-16"
+  },
+  {
+    "round": 2,
+    "role": "validation",
+    "oil_ml": 0.0,
+    "water_ml": 35.0,
+    "interface_cm": 6.8,
+    "method": "ruler (cm), photo-read; round 2, fill-based, water alone -- held out for P2-04, not used to build the calibration table",
+    "t": "2026-10-16"
+  }
+]

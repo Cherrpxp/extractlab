@@ -87,11 +87,11 @@ gantt
     section P1 - detect & track (estimated)
     P1-08 confirm live                      :active, p1, 2026-10-08, 10d
 
-    section P2 - calibrate volume (estimated)
-    P2-02..04 measure, fit, verify          :p2, after p1, 21d
+    section P2 - calibrate volume
+    P2-02..04 measure, fit, verify          :done, p2, 2026-10-16, 1d
 
     section P3 - wire the pump (estimated)
-    P3-01..06 motor driver + pump.py        :p3, after p2, 25d
+    P3-01..06 motor driver + pump.py        :p3, after p1, 25d
 
     section P4 - closed loop (estimated)
     P4-01..05 combine + dry run             :p4, 2027-01-05, 26d
@@ -108,14 +108,16 @@ gantt
 
 ## Status at a glance
 
-**Current phase: P1** (detect & track the interface) — see [`CHANGELOG.md`](CHANGELOG.md) for the dated,
-verified history behind this table and [`BACKLOG.md`](docs/BACKLOG.md) for the one open item (`P1-08`).
+**Current phase: P1/P2** (detect & track the interface; height -> volume calibration) — see
+[`CHANGELOG.md`](CHANGELOG.md) for the dated, verified history behind this table and
+[`BACKLOG.md`](docs/BACKLOG.md) for the one open P1 item (`P1-08`).
 
 | Done | In progress | Not started |
 |---|---|---|
-| Core algorithms: `boundary_detection`, `turbidity_dct`, `volume_model`, `synthetic_data`, `demo` (`RESULT: PASS`) | Re-running a live drain on the reconfigured funnel to formally confirm the P1 gate | Calibrating height -> volume with real measurements (funnel geometry, not linear) |
-| `tracking.py` — temporal filter, unit-tested (`tests/`), validated by replaying a real drain recording | | Wiring the pump safely (24V + HW-039 motor driver) |
-| `realtime_stream.py` — live view, status panel, in-browser recording, CSV browser, self-healing watchdog | | Closed-loop control, a 10-run RMSE study, the final report |
+| Core algorithms: `boundary_detection`, `turbidity_dct`, `volume_model`, `synthetic_data`, `demo` (`RESULT: PASS`) | Re-running a live drain on the reconfigured funnel to formally confirm the P1 gate | Wiring the pump safely (24V + HW-039 motor driver) |
+| `tracking.py` — temporal filter, unit-tested (`tests/`), validated by replaying a real drain recording | | Closed-loop control, a 10-run RMSE study, the final report |
+| `realtime_stream.py` — live view, status panel, in-browser recording, CSV browser, self-healing watchdog | | |
+| Height -> volume calibration: ruler-based (RMSE 0.589 mL) and camera-direct (RMSE 0.436 mL) tables, both under the 2 mL target | | |
 
 The detector reliably locks the real water/oil interface in a tightly-cropped, dark-background setup
 (`conf` ~12 vs. a threshold of 3). It has **not yet** been confirmed live with the current tracker fix. A

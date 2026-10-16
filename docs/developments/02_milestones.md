@@ -7,7 +7,7 @@ needs answered. The Gantt chart's five `crit` markers are **real deadlines** fro
 | Milestone | Phases | Answers | Done when | Status |
 |---|---|---|---|---|
 | **M1 — Detection proven** | P0, P1 | Can a classical (non-ML) pipeline find and track the interface reliably? | P1 gate closed (`P1-08`) | In progress — P0 done, P1's only remaining item is `P1-08` |
-| **M2 — Volume + hardware ready** | P2, P3 | Can height convert to volume, and can the pump be driven safely? | P2 and P3 gates both closed | Not started |
+| **M2 — Volume + hardware ready** | P2, P3 | Can height convert to volume, and can the pump be driven safely? | P2 and P3 gates both closed | In progress — P2 done, P3 not started |
 | **M3 — Closed loop validated** | P4, P5 | Does the whole system work unattended, repeatably, on the final target pair (water-oil)? | P5 gate closed (10-run RMSE) | Not started |
 | **M4 — Report** | P7 | Is it written up? | Report submitted | Not started |
 
@@ -27,9 +27,9 @@ gantt
     section M1 - detection proven (estimated)
     P1-08 confirm live                      :active, p1, 2026-10-08, 10d
 
-    section M2 - volume + hardware ready (estimated)
-    P2-02..04 measure, fit, verify          :p2, after p1, 21d
-    P3-01..06 motor driver + pump.py        :p3, after p2, 25d
+    section M2 - volume + hardware ready
+    P2-02..04 measure, fit, verify          :done, p2, 2026-10-16, 1d
+    P3-01..06 motor driver + pump.py        :p3, after p1, 25d
 
     section M3 - closed loop validated (estimated)
     P4-01..05 combine + dry run             :p4, 2027-01-05, 26d

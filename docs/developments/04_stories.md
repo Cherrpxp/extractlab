@@ -5,8 +5,8 @@ the matching epic.
 
 ```mermaid
 pie title Stories by status (37 total)
-    "Done" : 16
-    "Open" : 21
+    "Done" : 19
+    "Open" : 18
 ```
 
 | ID | Phase | Status | Story |
@@ -27,9 +27,9 @@ pie title Stories by status (37 total)
 | P1-07 | P1 | Done | Resolved by removing the stopcock from the funnel (pump now enters from the top) — no new detector needed |
 | P1-08 | P1 | **Open** | Re-run a live drain on the reconfigured funnel to confirm the P1 gate formally — the only remaining P1 item |
 | P2-01 | P2 | Done | `CalibrationTable` written + unit-tested |
-| P2-02 | P2 | Open | Measure the funnel's geometry, mm/px scale, zero-volume row |
-| P2-03 | P2 | Open | Fill to 3+ known volumes, build a calibration table (not linear) |
-| P2-04 | P2 | Open | Verify against a held-out volume (target RMSE < 2 mL) |
+| P2-02 | P2 | Done | Superseded the planned mm/px/ruler-photo step: calibrated `boundary_y` -> `volume_ml` straight from the camera; found and fixed a real repeatability bug (`EXPOSURE_US` too low) along the way |
+| P2-03 | P2 | Done | Filled to 4 known volumes (10/20/30/40 mL), built two calibration tables (ruler-based and camera-direct) |
+| P2-04 | P2 | Done | Verified against held-out volumes — ruler-based RMSE 0.589 mL, camera-direct RMSE 0.436 mL (target < 2 mL) |
 | P3-01 | P3 | Open | Confirm `vcgencmd get_throttled` reads `0x0` before wiring |
 | P3-02 | P3 | Done | Source a 24V 2A supply (S-50-24) + the HW-039 motor driver — voltages confirmed matching |
 | P3-03 | P3 | Open | Wire 24V -> HW-039 -> pump (never through Pi GPIO/5V/GND) |

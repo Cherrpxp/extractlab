@@ -7,7 +7,7 @@ in `BACKLOG.md` with its own gate — nothing here is invented, it's `PRD.md`'s 
 |---|---|---|---|
 | P0 | System & algorithm setup | `demo.py` -> `RESULT: PASS` | **Done** |
 | P1 | Detect & track the interface on real liquids | `boundary_y_smooth` monotonic during a drain, no jump > 30 px, interface found in >= 95% of frames | **In progress — one item left (`P1-08`)** |
-| P2 | Calibrate height -> volume | Predicted-volume RMSE < 2 mL | Not started |
+| P2 | Calibrate height -> volume | Predicted-volume RMSE < 2 mL | **Done** (0.436 mL, camera-direct) |
 | P3 | Wire the pump safely | Wiring reviewed, starts/stops on command, flow rate measured | Not started |
 | P4 | Closed loop (detect -> decide -> pump -> stop) | Clean separation, pump stops within target | Not started |
 | P5 | Repeatability study | RMSE < 2 mL across 10 runs, no run off by > 5 mL | Not started |
@@ -19,7 +19,7 @@ rehearsal for a harder solvent. The gap in numbering is intentional.)
 ```mermaid
 flowchart LR
     P0["P0\nSystem setup\n(done)"] --> P1["P1\nDetect & track\n(in progress)"]
-    P1 --> P2["P2\nCalibrate volume"]
+    P1 --> P2["P2\nCalibrate volume\n(done)"]
     P2 --> P3["P3\nWire the pump"]
     P3 --> P4["P4\nClosed loop"]
     P4 --> P5["P5\nRepeatability\n10-run RMSE"]
@@ -29,6 +29,7 @@ flowchart LR
     classDef active fill:#3a2a12,stroke:#f0b085,color:#e6e6e6
     class P0 done
     class P1 active
+    class P2 done
 ```
 
 See `02_milestones.md` for these phases grouped into checkpoints, `03_sprints.md` for how work on them has
